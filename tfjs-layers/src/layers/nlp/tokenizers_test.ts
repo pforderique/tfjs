@@ -19,7 +19,7 @@
  * Unit Tests for Tokenizer Layers.
  */
 
-import { Tensor1D, tensor1d } from '@tensorflow/tfjs-core';
+import { Tensor1D, tensor1d, test_util } from '@tensorflow/tfjs-core';
 
 import { BytePairTokenizer, Tokenizer } from './tokenizers';
 import { expectTensorsClose } from '../../utils/test_utils';
@@ -82,7 +82,20 @@ describe('Tokenizer', () => {
 });
 
 describe('BytePairTokenizer', () => {
-  it('bpe tokenize', () => {
+  it('gets correct set up', () => {
+    const vocabulary = new Map([['butter', 1], ['fly', 2]]);
+    const merges = ['b u', 't t', 'e r', 'bu tt', 'butt er', 'f l', 'fl y'];
+    const tokenizer = new BytePairTokenizer({vocabulary, merges});
+    const config = tokenizer.getConfig();
+
+    expect(tokenizer.vocabulary).toEqual(['butter', 'fly']);
+    expect(tokenizer.vocabularySize).toEqual(2);
+    expect(tokenizer.idToToken(1)).toEqual('butter');
+    expect(tokenizer.tokenToId('butter')).toEqual(1);
+    test_util.expectArraysEqual(config.merges as string[], merges);
+  });
+
+  it('tokenize', () => {
     const vocabulary = new Map([['butter', 1], ['fly', 2]]);
     const merges = ['b u', 't t', 'e r', 'bu tt', 'butt er', 'f l', 'fl y'];
     const tokenizer = new BytePairTokenizer({vocabulary, merges});
