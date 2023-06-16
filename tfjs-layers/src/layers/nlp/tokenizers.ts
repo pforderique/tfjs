@@ -319,6 +319,8 @@ export class BytePairTokenizer extends Tokenizer {
     return config;
   }
 
+  //! LEFT OFF HERE!!! DEFINE private bpeMergeOneStep(words: any, mask: any)
+
   tokenize(inputs: Tensor1D): Tensor1D[] {
     const stringInputs = inputs.dataSync() as unknown as string[];
     return stringInputs.map(input => tensor1d(input.split(' ')));
