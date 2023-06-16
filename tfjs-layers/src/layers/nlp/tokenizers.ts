@@ -24,7 +24,7 @@ import { Tensor1D, serialization, tensor1d} from '@tensorflow/tfjs-core';
 
 import { Layer, LayerArgs } from '../../engine/topology';
 import { NotImplementedError, ValueError } from '../../errors';
-import { bytesToUnicode } from './tokenizers_utils';
+import { BytePairTokenizerCache, StaticHashTable, bytesToUnicode, createStaticHashtable } from './tokenizers_utils';
 
 export declare interface TokenizerOptions {
   mode?: 'tokenize' | 'detokenize';
@@ -158,18 +158,43 @@ export abstract class Tokenizer extends Layer {
 }
 
 /* Original source: keras-nlp/byte_pair_tokenizer.py */
+// TODO(pforderique): Support filename string inputs for vocabulary and merges.
 export declare interface BytePairTokenizerArgs extends LayerArgs {
   /**
    * Maps token to integer ids
    */
   vocabulary: Map<string, number>;
+
   /**
-   * Contains the merge rules.
+   * Array. Contains the merge rule.
    */
   merges: string[];
 
-  // TODO(orderique): Add optional parameters for sequenceLength, ddPrefixSpace,
-  // and unsplittableTokens
+  /**
+   * Integer. If set, the output will be padded or truncated to the
+   * `sequenceLength`. Defaults to `null`.
+   */
+  sequenceLength?: number;
+
+  /**
+   * Boolean. Whether to add an initial space to the input. This tokenizer is
+   * whitespace aware, and will tokenize a word with a leading space
+   * differently. Adding a prefix space to the first word will cause it to be
+   * tokenized equivalently to all subsequent words in the sequence.
+   * Defaults to `false`.
+   */
+  addPrefixSpace?: boolean;
+
+  /**
+   * Array. A list of strings that will never be split during the word-level
+   * splitting applied before the byte-pair encoding. This can be used to ensure
+   * special tokens map to unique indices in the vocabulary, even if these
+   * special tokens contain splittable characters such as punctuation. Special
+   * tokens must still be included in `vocabulary`. Defaults to `None`.
+   */
+  unsplittableTokens?: string[];
+
+  dtype?: 'string'|'int32';
 }
 
 export class BytePairTokenizer extends Tokenizer {
@@ -179,27 +204,69 @@ export class BytePairTokenizer extends Tokenizer {
   private _vocabulary: Map<string, number>;
   private merges: string[];
 
-  constructor(args?: BytePairTokenizerArgs) {
-    super(args == null ? {} : args);
-    if (args != null) {
-      // TODO(orderique): Parse out filename inputs for vocabulary and merge.
-      this._vocabulary = new Map(args.vocabulary);
-      this.merges = [...args.merges];
+  private readonly sequenceLength: number;
+  private readonly addPrefixSpace: boolean;
+  private readonly unsplittableTokens: string[];
+  private readonly _dtype: 'int32'|'string';
 
-      // TODO(orderique): Add sequenceLength, addPrefixSpace, etc.
+  private readonly byte2Unicode: StaticHashTable<number, string>;
+  private readonly unicode2Byte: StaticHashTable<string, number>;
+  private readonly cache = new BytePairTokenizerCache();
 
-      // Create byte <=> unicode mapping. This is useful for handling
-      // whitespace tokens.
+  private readonly tokenToIdMap: StaticHashTable<string, number>;
+  private readonly idToTokenMap: StaticHashTable<number, string>;
 
-      this._vocabulary;
-      this.merges;
+  private readonly mergeRanksLookupDefault: number;
+  private readonly mergeRanks: StaticHashTable<string, number>;
 
-      const [byteList, unicodeList] = bytesToUnicode();
-      byteList; unicodeList;
+  constructor(args: BytePairTokenizerArgs) {
+    super(args);
 
-      // LEFT OFF HERE: ADD THE CONSTRUCTOR!!!!!!! THEN WRITE TESTS!!!!!!!!!!!
-      // add this._merges
+    this._vocabulary = new Map(args.vocabulary);
+    this.merges = [...args.merges];
+
+    this.sequenceLength = args.sequenceLength || null;
+    this.addPrefixSpace = args.addPrefixSpace || false;
+    this.unsplittableTokens = args.unsplittableTokens || null;
+    this._dtype = args.dtype || 'int32';
+
+    // Create byte <=> unicode mapping. This is useful for handling
+    // whitespace tokens.
+    const [byteList, unicodeList] = bytesToUnicode();
+    this.byte2Unicode = createStaticHashtable(
+      Array.from(byteList), unicodeList, '');
+    this.unicode2Byte = createStaticHashtable(
+      unicodeList, Array.from(byteList), -1);
+
+    if (this.unsplittableTokens) {
+      // Put unsplittable tokens into cache, so it won't be further split and
+      // merged.
+      this.cache.insert(this.unsplittableTokens, this.unsplittableTokens);
     }
+
+    // Create mapping between string tokens to int ids, and vice versa.
+    const bytePairs = [...this._vocabulary.keys()];
+    const bytePairEncodingIndicies = [...this._vocabulary.values()];
+
+    this.tokenToIdMap = createStaticHashtable(
+      bytePairs, bytePairEncodingIndicies, -1);
+
+    this.idToTokenMap = createStaticHashtable(
+      bytePairEncodingIndicies, bytePairs, '');
+
+    // Create ranking of merge rules, this is the same as order of merge pairs
+    // in `this.merges`.
+    this.mergeRanksLookupDefault = this.merges.length + 1;
+    this.mergeRanks = createStaticHashtable(
+      this.merges,
+      [...Array(this.merges.length).keys()],
+      this.mergeRanksLookupDefault
+    );
+
+    this.sequenceLength;
+    this.addPrefixSpace; this._dtype;
+    this.byte2Unicode; this.unicode2Byte; this.tokenToIdMap;
+    this.idToTokenMap; this.mergeRanks;
   }
 
   tokenize(inputs: Tensor1D): Tensor1D[] {

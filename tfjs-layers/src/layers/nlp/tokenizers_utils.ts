@@ -53,7 +53,7 @@ export function bytesToUnicode(): [Uint8Array, string[]] {
 /**
  * StaticHashTable extends Map and includes a `lookup` function that
  */
-class StaticHashTable<K, V extends number|string> {
+export class StaticHashTable<K, V extends number|string> {
   private _map: Map<K, V>;
 
   constructor(keys: K[], values: V[], private readonly defaultValue: V) {
@@ -94,4 +94,21 @@ export function createStaticHashtable<T1, T2 extends number|string>(
   keys: T1[], values: T2[], defaultVal: T2): StaticHashTable<T1, T2> {
 
   return new StaticHashTable(keys, values, defaultVal);
+}
+
+export class BytePairTokenizerCache {
+  private _cache: Map<Tensor, string[]>;
+
+  constructor() {
+    this._cache = new Map();
+  }
+
+  insert(key: string[], value: string[]): BytePairTokenizerCache {
+    this._cache.set(tensor1d(key), value);
+    return this;
+  }
+
+  lookup(key: string[]): string[] {
+    return this._cache.get(tensor1d(key));
+  }
 }
