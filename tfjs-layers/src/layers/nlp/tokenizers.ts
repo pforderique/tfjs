@@ -269,6 +269,56 @@ export class BytePairTokenizer extends Tokenizer {
     this.idToTokenMap; this.mergeRanks;
   }
 
+  /**
+   * Get the tokenizer vocabulary as a list of string tokens.
+   */
+  override get vocabulary(): string[] {
+    return [...this._vocabulary.keys()];
+  }
+
+  /**
+   * Get the size of the tokenizer vocabulary.
+   */
+  override get vocabularySize(): number {
+    return this._vocabulary.size;
+  }
+
+  /**
+   * Convert an integer id to a string token.
+   */
+  override idToToken(id: number): string {
+    // This will be slow, but keep memory usage down compared to building a
+    // dict. Assuming the main use case is looking up a few special tokens
+    // early in the vocab, this should be fine.
+    const keys = this.vocabulary;
+    for (const token of keys) {
+      if (this._vocabulary.get(token) === id) {
+        return token;
+      }
+    }
+    throw new ValueError(`id is out of the vocabulary. Received: ${id}`);
+  }
+
+  /**
+   * Convert a string token to an integer id.
+   */
+  override tokenToId(token: string): number {
+    return this._vocabulary.get(token);
+  }
+
+  override getConfig(): serialization.ConfigDict {
+    const config = {
+      vocabulary: this.vocabulary,
+      merges: this.merges,
+      sequenceLength: this.sequenceLength,
+      addPrefixSpace: this.addPrefixSpace,
+      unsplittableTokens: this.unsplittableTokens,
+    };
+    const baseConfig = super.getConfig();
+    Object.assign(config, baseConfig);
+    return config;
+  }
+
   tokenize(inputs: Tensor1D): Tensor1D[] {
     const stringInputs = inputs.dataSync() as unknown as string[];
     return stringInputs.map(input => tensor1d(input.split(' ')));
