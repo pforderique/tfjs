@@ -24,6 +24,7 @@ import { Tensor1D, serialization, tensor1d } from '@tensorflow/tfjs-core';
 
 import { Layer, LayerArgs } from '../../engine/topology';
 import { NotImplementedError, ValueError } from '../../errors';
+import { bytesToUnicode } from './tokenizers_utils';
 
 export declare interface TokenizerOptions {
   mode?: 'tokenize' | 'detokenize';
@@ -134,9 +135,9 @@ export abstract class Tokenizer extends Layer {
   }
 
   override call(
-    inputs: Tensor1D|Tensor1D[],
-    {mode = 'tokenize'}: TokenizerOptions={}
-  ): Tensor1D|Tensor1D[] {
+    inputs: Tensor1D | Tensor1D[],
+    { mode = 'tokenize' }: TokenizerOptions = {}
+  ): Tensor1D | Tensor1D[] {
 
     if (mode === 'tokenize') {
       if (inputs instanceof Array) {
@@ -192,6 +193,9 @@ export class BytePairTokenizer extends Tokenizer {
 
       this._vocabulary;
       this.merges;
+
+      const [byteList, unicodeList] = bytesToUnicode();
+      byteList; unicodeList;
 
       // LEFT OFF HERE: ADD THE CONSTRUCTOR!!!!!!! THEN WRITE TESTS!!!!!!!!!!!
       // add this._merges
