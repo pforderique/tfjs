@@ -17,17 +17,17 @@
 
 /* Original source: keras-nlp/byte_pair_tokenizer.py */
 
-import { Tensor, tensor1d } from '@tensorflow/tfjs-core';
+import { Tensor, tensor } from '@tensorflow/tfjs-core';
 import { ValueError } from '../../errors';
 
 export function bytesToUnicode(): [Uint8Array, string[]] {
-  const range = (start: number, end: number) =>
+  const inclusiveRange = (start: number, end: number) =>
     Array.from({ length: (end - start + 1) }, (v, k) => k + start);
 
   const bs = [
-    ...range('!'.charCodeAt(0), '~'.charCodeAt(0)),
-    ...range('¡'.charCodeAt(0), '¬'.charCodeAt(0)),
-    ...range('®'.charCodeAt(0), 'ÿ'.charCodeAt(0))
+    ...inclusiveRange('!'.charCodeAt(0), '~'.charCodeAt(0)),
+    ...inclusiveRange('¡'.charCodeAt(0), '¬'.charCodeAt(0)),
+    ...inclusiveRange('®'.charCodeAt(0), 'ÿ'.charCodeAt(0))
   ];
 
   const cs = [...bs];
@@ -51,7 +51,7 @@ export function bytesToUnicode(): [Uint8Array, string[]] {
 }
 
 /**
- * StaticHashTable extends Map and includes a `lookup` function that
+ * StaticHashTable includes a `lookup` function for multiple keys at once.
  */
 export class StaticHashTable<K, V extends number|string> {
   private _map: Map<K, V>;
@@ -73,25 +73,28 @@ export class StaticHashTable<K, V extends number|string> {
   }
 
   get(key: K): V {
-    return this._map.get(key) || this.defaultValue;
+    if (this._map.has(key)) {
+      return this._map.get(key);
+    }
+    return this.defaultValue;
   }
 
-  lookup(keys: Tensor[]): Tensor[] {
-    const values = keys.map(tensor => {
+  async lookup(keys: Tensor[]): Promise<Tensor[]> {
+    const values = keys.map(async t => {
       const innerValues: V[] = [];
-      for (const key of tensor.dataSync() as unknown as K[]) {
+      for (const key of await t.data() as unknown as K[]) {
         innerValues.push(this.get(key));
       }
 
-      return tensor1d(innerValues as string[]|number[]);
+      return tensor(innerValues, t.shape);
     });
 
-    return values;
+    return Promise.all(values);
   }
 }
 
-export function createStaticHashtable<T1, T2 extends number|string>(
-  keys: T1[], values: T2[], defaultVal: T2): StaticHashTable<T1, T2> {
+export function createStaticHashtable<K, V extends number|string>(
+  keys: K[], values: V[], defaultVal: V): StaticHashTable<K, V> {
 
   return new StaticHashTable(keys, values, defaultVal);
 }
@@ -104,7 +107,7 @@ export function createStaticHashtable<T1, T2 extends number|string>(
  *
  * Examples:
  *
- * ```
+ * ```js
  * const cache = new BytePairTokenizerCache();
  * cache.insert(["butterfly", "dragonfly"], ["but ter fly", "dragon fly"]);
  * cache.lookup(["butterfly"]);
@@ -120,9 +123,10 @@ export class BytePairTokenizerCache {
   /**
    * Insert token <=> encoded outputs pairs.
    */
-  insert(keys: Tensor|string[], values: string[]): BytePairTokenizerCache {
+  async insert(
+    keys: Tensor|string[], values: string[]): Promise<BytePairTokenizerCache> {
     const arrKeys = keys instanceof Tensor ?
-      keys.dataSync() as unknown as string[] : keys;
+      await keys.data() as unknown as string[] : keys;
 
     arrKeys.forEach((key, idx) => this._cache.set(key, values[idx]));
     return this;
@@ -131,9 +135,168 @@ export class BytePairTokenizerCache {
   /**
    * Look up the encoded outputs of given tokens.
    */
-  lookup(keys: Tensor|string[]): string[] {
+  async lookup(keys: Tensor|string[]): Promise<string[]> {
     const arrKeys = keys instanceof Tensor ?
-      keys.dataSync() as unknown as string[] : keys;
+      await keys.data() as unknown as string[] : keys;
     return arrKeys.map(key => this._cache.get(key));
   }
+}
+
+/**
+ * Remove certain strings from input tensor.
+ */
+export async function removeStringsFromInputs(
+  inputs: Tensor[], stringToRemove: string): Promise<Tensor[]> {
+
+  const stringArrInputs = await Promise.all(inputs.map(async input =>
+    (await input.data() as unknown as string[])));
+
+  const filteredStrArrays = stringArrInputs
+    .map(arr => arr.filter(s => s !== stringToRemove))
+    .filter(arr => arr.length > 0);
+
+  const filteredTensors = filteredStrArrays.map(arr => tensor(arr));
+
+  return filteredTensors;
+}
+
+/**
+ * Create alternates for all special tokens that will be not split during
+ * tokenization.
+ */
+export function createAltsForUnsplittableTokens(
+  unsplittableTokens: string[]): string[] {
+
+  const prefix = 'ĵ';
+
+  // Trim out splitters.
+  const replacePattern: RegExp = /'|\s+|[^\p{L}\p{N}]+/gu;
+  return unsplittableTokens.map(
+    token => prefix + token.replace(replacePattern, ''));
+}
+
+// Typescript and TF handles special spaces differently, we need to
+// manually handle special spaces during string split.
+const SPECIAL_WHITESPACES = /\u00A0\u2009\u202f\u3000/;
+
+// String splitting regex pattern.
+const pL = 'a-zA-ZáàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒĵ';
+const pN = '0-9';
+export const SPLIT_PATTERN_1 = new RegExp(
+  `'s|'t|'re|'ve|'m|'ll|'d` +
+  `|[\\s${SPECIAL_WHITESPACES.source}]+` +
+  `[\\n\\r\\t\\f६${SPECIAL_WHITESPACES.source}]| ?${pL}+|`+
+  ` ?${pN}+| ?[^\\s${pL}${pN}${SPECIAL_WHITESPACES.source}]+`,
+  'gu'
+);
+
+const SPLIT_PATTERN_2 = new RegExp(`[\\s६${SPECIAL_WHITESPACES.source}]\$`);
+
+function flatten<T>(inputs: T[][]): T[] {
+  return inputs.reduce(
+    (accumulator, value) => accumulator.concat(value), []);
+}
+
+export function regexSplit(
+  strs: string[]|string[][],
+  delimRegexPattern: RegExp | string,
+  keepDelimRegexPattern?: RegExp | string): string[][] {
+
+  if (strs[0] instanceof Array) {
+    const mapped = strs.map(arr => regexSplit(
+      arr as string[], delimRegexPattern, keepDelimRegexPattern));
+    return mapped.map((doubleArr) => flatten(doubleArr));
+  }
+
+  strs = strs as string[];
+
+  if (!(delimRegexPattern instanceof RegExp)) {
+    if (keepDelimRegexPattern) {
+      delimRegexPattern = new RegExp(
+        `(?=[${delimRegexPattern}])|(?<=[${delimRegexPattern}])`);
+    }
+    return strs.map(str => str.split(delimRegexPattern).filter(s => s));
+  }
+
+  let regexPattern = delimRegexPattern as unknown as RegExp;
+  if (!regexPattern.flags.includes('g')) {
+    regexPattern = new RegExp(regexPattern.source, regexPattern.flags + 'g');
+  }
+
+  return strs.map(str => {
+    const matches = str.matchAll(regexPattern);
+
+    const splitString = [];
+    let currIdx = 0;
+    for (const match of matches) {
+      splitString.push(str.slice(currIdx, match.index));
+      if (keepDelimRegexPattern) {
+        splitString.push(
+          str.slice(match.index, match.index! + match[0].length));
+      }
+      currIdx = match.index! + match[0].length;
+    }
+    if (currIdx !== str.length) {
+      splitString.push(str.slice(currIdx, str.length));
+    }
+    return splitString.filter(s => s);
+  });
+}
+
+export async function tensorToStringArr(input: Tensor): Promise<string[]> {
+  return await input.data() as unknown as string[];
+}
+
+export async function tensorArrToString2DArr(
+  inputs: Tensor[]): Promise<string[][]> {
+  return Promise.all(inputs.map(
+    async input => await input.data() as unknown as string[]));
+}
+
+export async function splitStringsForBpe(
+  inputs: Tensor, unsplittableTokens?: string[]): Promise<Tensor[]> {
+
+  // We need to recreate the exact behavior of token presplitting in the
+  // original gpt2 implementation which uses a lookahead. We are using an
+  // alternative by inserting a special token "६" before leading space of
+  // non-space characters and after the trailing space, e.g.,
+  // " tf" will be "६ tf".
+  const pattern1 = new RegExp(`( )([^\s${SPECIAL_WHITESPACES}])`);
+  const pattern2 = new RegExp(`(\s${SPECIAL_WHITESPACES})\$`);
+
+  const inputsStr = (await inputs.data() as unknown as string[]).map(str =>
+    str.replace(pattern1, `६$1$2`).replace(pattern2, `$1६`)
+  );
+
+  let alts: string[];
+  let rawTokens: string[][];
+
+  if (unsplittableTokens && unsplittableTokens.length > 0) {
+    alts = createAltsForUnsplittableTokens(unsplittableTokens);
+    unsplittableTokens.forEach((token, idx) => {
+      const alt = alts[idx];
+      const escapedToken = token.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+
+      rawTokens = regexSplit(rawTokens !== undefined ?
+        rawTokens : inputsStr, escapedToken, escapedToken);
+      rawTokens = rawTokens.map(
+        arr => arr.map(t => t.replace(escapedToken, alt)));
+    });
+  }
+  rawTokens = regexSplit(rawTokens !== undefined ?
+    rawTokens : inputsStr, SPLIT_PATTERN_1, SPLIT_PATTERN_1);
+  // Second pass splits out the last whilespace char or "६".
+  rawTokens  = regexSplit(rawTokens, SPLIT_PATTERN_2, SPLIT_PATTERN_2);
+
+  if (unsplittableTokens && unsplittableTokens.length > 0) {
+    // Replace special tokens alternate with originals.
+    unsplittableTokens.forEach((token, idx) => {
+      const alt = alts[idx];
+      const escapedAlt = alt.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      rawTokens = rawTokens.map(
+        arr => arr.map(t => t.replace(escapedAlt, token)));
+    });
+  }
+
+  return removeStringsFromInputs(rawTokens.map(tokens => tensor(tokens)), '६');
 }

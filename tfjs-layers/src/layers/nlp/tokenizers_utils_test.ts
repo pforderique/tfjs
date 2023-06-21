@@ -15,10 +15,11 @@
  * =============================================================================
  */
 
-import { tensor1d, test_util } from '@tensorflow/tfjs-core';
+import { tensor, test_util } from '@tensorflow/tfjs-core';
 
-import { BytePairTokenizerCache, bytesToUnicode, createStaticHashtable }
-  from './tokenizers_utils';
+import { BytePairTokenizerCache, SPLIT_PATTERN_1, bytesToUnicode,
+  createAltsForUnsplittableTokens, createStaticHashtable, regexSplit,
+  removeStringsFromInputs, splitStringsForBpe } from './tokenizers_utils';
 import { expectTensorsClose } from '../../utils/test_utils';
 
 describe('bytesToUnicode', () => {
@@ -66,7 +67,7 @@ describe('bytesToUnicode', () => {
 });
 
 describe('createStaticHashtable', () => {
-  it('creates StaticHashTable<number, string> correctly', () => {
+  it('creates StaticHashTable<number, string> correctly', async () => {
     const [bytesList, charsList] = bytesToUnicode();
     const byte2Unicode = createStaticHashtable(
       Array.from(bytesList), charsList, '');
@@ -75,10 +76,11 @@ describe('createStaticHashtable', () => {
     expect(byte2Unicode.get(-1)).toBe('');
 
     expectTensorsClose(
-      byte2Unicode.lookup([tensor1d([33, 133])])[0], tensor1d(['!', '\x85']));
+      (await byte2Unicode.lookup([tensor([33, 133])]))[0],
+      tensor(['!', '\x85']));
   });
 
-  it('creates StaticHashTable<string, number> correctly', () => {
+  it('creates StaticHashTable<string, number> correctly', async () => {
     const [bytesList, charsList] = bytesToUnicode();
     const unicode2Byte = createStaticHashtable(
       charsList, Array.from(bytesList), -1);
@@ -87,7 +89,8 @@ describe('createStaticHashtable', () => {
     expect(unicode2Byte.get('😁')).toBe(-1);
 
     expectTensorsClose(
-      unicode2Byte.lookup([tensor1d(['!', '{'])])[0], tensor1d([33, 123]));
+      (await unicode2Byte.lookup([tensor(['!', '{'])]))[0],
+      tensor([33, 123]));
   });
 });
 
@@ -98,17 +101,123 @@ describe('BytePairTokenizerCache', () => {
     cache = new BytePairTokenizerCache();
   });
 
-  it('inserts strings and retrieves correctly', () => {
-    cache.insert(['butterfly', 'dragonfly'], ['but ter fly', 'dragon fly']);
-
-    test_util.expectArraysEqual(cache.lookup(['butterfly']), ['but ter fly']);
-  });
-
-  it('inserts tensors and retrieves correctly', () => {
-    cache.insert(
-      tensor1d(['butterfly', 'dragonfly']), ['but ter fly', 'dragon fly']);
+  it('inserts strings and retrieves correctly', async () => {
+    await cache.insert(
+      ['butterfly', 'dragonfly'], ['but ter fly', 'dragon fly']);
 
     test_util.expectArraysEqual(
-      cache.lookup(tensor1d(['dragonfly'])), ['dragon fly']);
+      await cache.lookup(['butterfly']), ['but ter fly']);
+  });
+
+  it('inserts tensors and retrieves correctly', async () => {
+    await cache.insert(
+      tensor(['butterfly', 'dragonfly']), ['but ter fly', 'dragon fly']);
+
+    test_util.expectArraysEqual(
+      await cache.lookup(tensor(['dragonfly'])), ['dragon fly']);
+  });
+});
+
+describe('removeStringsFromInputs', () => {
+  it ('removes nothing successfully', async () => {
+    const inputs = [tensor(['butterfly']), tensor(['butter'])];
+    const stringToRemove = '६';
+
+    const result = await removeStringsFromInputs(inputs, stringToRemove);
+
+    expect(result.length).toBe(2);
+    expectTensorsClose(result[0], tensor(['butterfly']));
+    expectTensorsClose(result[1], tensor(['butter']));
+  });
+
+  it ('removes strings successfully', async () => {
+    const inputs = [tensor(['butterfly']), tensor(['butter'])];
+    const stringToRemove = 'butter';
+
+    const result = await removeStringsFromInputs(inputs, stringToRemove);
+
+    expect(result.length).toBe(1);
+    expectTensorsClose(result[0], tensor(['butterfly']));
+  });
+});
+
+describe('createAltsForUnsplittableTokens', () => {
+  it ('creates alts with no matching regex pattern', () => {
+    const unsplittableTokens = ['s', 'p'];
+
+    const result = createAltsForUnsplittableTokens(unsplittableTokens);
+
+    expect(result.length).toBe(2);
+    test_util.expectArraysEqual(result, ['ĵs', 'ĵp']);
+  });
+
+  it ('creates alts with matching regex pattern', () => {
+    const unsplittableTokens = [' s', 'p'];
+
+    const result = createAltsForUnsplittableTokens(unsplittableTokens);
+
+    expect(result.length).toBe(2);
+    test_util.expectArraysEqual(result, ['ĵs', 'ĵp']);
+  });
+
+  it ('regex works correctly', () => {
+    const unsplittableTokens = ['😊,_五$ñü]aA5{\'\n~`'];
+
+    const result = createAltsForUnsplittableTokens(unsplittableTokens);
+
+    expect(result.length).toBe(1);
+    test_util.expectArraysEqual(result, ['ĵ五ñüaA5']);
+  });
+});
+
+describe('regexSplit', () => {
+  it ('splits with regex and string', () => {
+    const strResult = regexSplit(['hello there'], /\s/g);
+    const regexResult = regexSplit(['hello there'], ' ');
+    const expected = [['hello', 'there']];
+
+    test_util.expectArraysEqual(strResult, expected);
+    test_util.expectArraysEqual(regexResult, expected);
+  });
+
+  it ('keeps string delimiter', () => {
+    test_util.expectArraysEqual(regexSplit(['sp'], 's', 's'), [['s', 'p']]);
+    test_util.expectArraysEqual(
+      regexSplit(['\xc4\xb4s', 'p'], 'p', 'p'), [['Ä´s'], ['p']] );
+  });
+
+  it('splits regex delimiter', () => {
+    const result = regexSplit(['ĵs', 'ĵp'], SPLIT_PATTERN_1, SPLIT_PATTERN_1);
+
+    test_util.expectArraysEqual(result, [['ĵs'], ['ĵp']]);
+  });
+
+  it('works with periods', () => {
+    const result = regexSplit(
+      ['brown.', 'black.'], SPLIT_PATTERN_1, SPLIT_PATTERN_1);
+
+    test_util.expectArraysEqual(result, [['brown', '.'], ['black', '.']]);
+  });
+});
+
+describe('splitStringsForBpe', () => {
+  it ('splits with unsplittable tokens', async () => {
+    const inputs = tensor(['sp']);
+    const unsplittableTokens = ['s', 'p'];
+
+    const result = await splitStringsForBpe(inputs, unsplittableTokens);
+
+    expect(result.length).toBe(1);
+    expectTensorsClose(result[0], tensor(['s', 'p']));
+  });
+
+  it ('splits with no unsplittable tokens', async () => {
+    const inputs = tensor(['brown.', 'black.']);
+
+    const result = await splitStringsForBpe(inputs);
+
+    expect(result.length).toBe(2);
+    expectTensorsClose(result[0], tensor(['brown', '.']));
+    expectTensorsClose(result[1], tensor(['black', '.']));
   });
 });
