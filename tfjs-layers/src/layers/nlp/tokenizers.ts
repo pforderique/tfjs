@@ -20,11 +20,11 @@
  */
 
 /* Original source: keras-nlp/tokenizer.py */
-import { Tensor1D, serialization, tensor1d} from '@tensorflow/tfjs-core';
+import { Tensor, serialization, tensor} from '@tensorflow/tfjs-core';
 
 import { Layer, LayerArgs } from '../../engine/topology';
 import { NotImplementedError, ValueError } from '../../errors';
-import { BytePairTokenizerCache, StaticHashTable, bytesToUnicode, createStaticHashtable } from './tokenizers_utils';
+import { BytePairTokenizerCache, StaticHashTable, bytesToUnicode, createStaticHashtable, removeStringsFromInputs, splitStringsForBpe, tensorArrTo2DArr, tensorToArr } from './tokenizers_utils';
 
 export declare interface TokenizerOptions {
   mode?: 'tokenize' | 'detokenize';
@@ -53,23 +53,23 @@ export declare interface TokenizerOptions {
  *
  *  ```js
  *  class WhitespaceSplitterTokenizer extends Tokenizer {
- *    tokenize(inputs: Tensor1D): Tensor1D[] {
+ *    tokenize(inputs: Tensor): Tensor[] {
  *      const stringInputs = inputs.dataSync() as unknown as string[];
- *      return stringInputs.map(input => tensor1d(input.split(' ')));
+ *      return stringInputs.map(input => Tensor(input.split(' ')));
  *    }
  *
- *    override detokenize(inputs: Tensor1D[]): Tensor1D {
+ *    override detokenize(inputs: Tensor[]): Tensor {
  *      const stringInputs = inputs.map(
  *        input => input.dataSync() as unknown as string[]);
- *      return tensor1d(stringInputs.map(str => str.join(' ')));
+ *      return Tensor(stringInputs.map(str => str.join(' ')));
  *    }
  *  }
  *
  * const tokenizer = new WhitespaceSplitterTokenizer();
  *
- * tokenizer.tokenize(tensor1d(['this is a test']))[0].print();
+ * tokenizer.tokenize(Tensor(['this is a test']))[0].print();
  *
- * tokenizer.detokenize([tensor1d(['this', 'is', 'a', 'test'])]).print();
+ * tokenizer.detokenize([Tensor(['this', 'is', 'a', 'test'])]).print();
  * ```
  */
 export abstract class Tokenizer extends Layer {
@@ -79,7 +79,7 @@ export abstract class Tokenizer extends Layer {
    * @param inputs Input tensor.
    * @param kwargs Additional keyword arguments.
    */
-  abstract tokenize(inputs: Tensor1D): Tensor1D[];
+  abstract tokenize(inputs: Tensor): Tensor[];
 
   /**
    * Transform tokens back into strings.
@@ -87,7 +87,7 @@ export abstract class Tokenizer extends Layer {
    * @param inputs Input tensor.
    * @param kwargs Additional keyword arguments.
    */
-  detokenize(inputs: Tensor1D[]): Tensor1D {
+  detokenize(inputs: Tensor[]): Tensor {
     throw new NotImplementedError(
       `No implementation of 'detokenize()' was found for
       ${this.constructor.name}.`
@@ -135,20 +135,20 @@ export abstract class Tokenizer extends Layer {
   }
 
   override call(
-    inputs: Tensor1D | Tensor1D[],
-    { mode = 'tokenize' }: TokenizerOptions = {}
-  ): Tensor1D | Tensor1D[] {
+    inputs: Tensor|Tensor[],
+    {mode = 'tokenize'}: TokenizerOptions={}
+  ): Tensor|Tensor[] {
 
     if (mode === 'tokenize') {
       if (inputs instanceof Array) {
-        throw new ValueError(`tokenize expects Tensor1D, not Tensor1D[].`);
+        throw new ValueError(`tokenize expects Tensor, not Tensor[].`);
       }
       return this.tokenize(inputs);
     }
 
     if (mode === 'detokenize') {
       if (!(inputs instanceof Array)) {
-        throw new ValueError(`detokenize expects Tensor1D[], not Tensor1D.`);
+        throw new ValueError(`detokenize expects Tensor[], not Tensor.`);
       }
       return this.detokenize(inputs);
     }
@@ -193,8 +193,6 @@ export declare interface BytePairTokenizerArgs extends LayerArgs {
    * tokens must still be included in `vocabulary`. Defaults to `None`.
    */
   unsplittableTokens?: string[];
-
-  dtype?: 'string'|'int32';
 }
 
 export class BytePairTokenizer extends Tokenizer {
@@ -207,10 +205,8 @@ export class BytePairTokenizer extends Tokenizer {
   private readonly sequenceLength: number;
   private readonly addPrefixSpace: boolean;
   private readonly unsplittableTokens: string[];
-  private readonly _dtype: 'int32'|'string';
 
   private readonly byte2Unicode: StaticHashTable<number, string>;
-  private readonly unicode2Byte: StaticHashTable<string, number>;
   private readonly cache = new BytePairTokenizerCache();
 
   private readonly tokenToIdMap: StaticHashTable<string, number>;
@@ -228,15 +224,12 @@ export class BytePairTokenizer extends Tokenizer {
     this.sequenceLength = args.sequenceLength || null;
     this.addPrefixSpace = args.addPrefixSpace || false;
     this.unsplittableTokens = args.unsplittableTokens || null;
-    this._dtype = args.dtype || 'int32';
 
     // Create byte <=> unicode mapping. This is useful for handling
     // whitespace tokens.
     const [byteList, unicodeList] = bytesToUnicode();
     this.byte2Unicode = createStaticHashtable(
       Array.from(byteList), unicodeList, '');
-    this.unicode2Byte = createStaticHashtable(
-      unicodeList, Array.from(byteList), -1);
 
     if (this.unsplittableTokens) {
       // Put unsplittable tokens into cache, so it won't be further split and
@@ -262,11 +255,6 @@ export class BytePairTokenizer extends Tokenizer {
       [...Array(this.merges.length).keys()],
       this.mergeRanksLookupDefault
     );
-
-    this.sequenceLength;
-    this.addPrefixSpace; this._dtype;
-    this.byte2Unicode; this.unicode2Byte; this.tokenToIdMap;
-    this.idToTokenMap; this.mergeRanks;
   }
 
   /**
@@ -286,7 +274,7 @@ export class BytePairTokenizer extends Tokenizer {
   /**
    * Convert an integer id to a string token.
    */
-  override idToToken(id: number): string {
+  override idToToken(id: number): string | undefined {
     // This will be slow, but keep memory usage down compared to building a
     // dict. Assuming the main use case is looking up a few special tokens
     // early in the vocab, this should be fine.
@@ -296,13 +284,13 @@ export class BytePairTokenizer extends Tokenizer {
         return token;
       }
     }
-    throw new ValueError(`id is out of the vocabulary. Received: ${id}`);
+    return undefined;
   }
 
   /**
    * Convert a string token to an integer id.
    */
-  override tokenToId(token: string): number {
+  override tokenToId(token: string): number | undefined {
     return this._vocabulary.get(token);
   }
 
@@ -319,17 +307,236 @@ export class BytePairTokenizer extends Tokenizer {
     return config;
   }
 
-  //! LEFT OFF HERE!!! DEFINE private bpeMergeOneStep(words: any, mask: any)
+  /**
+   * Perform one step of byte-pair merge.
+   */
+  private bpeMergeOneStep(
+    words: Tensor[], mask: boolean[]): [Tensor[], boolean[]] {
 
-  tokenize(inputs: Tensor1D): Tensor1D[] {
-    const stringInputs = inputs.dataSync() as unknown as string[];
-    return stringInputs.map(input => tensor1d(input.split(' ')));
+    const wordsStr = tensorArrTo2DArr(words) as string[][];
+
+    // Get all word pairs.
+    const first = wordsStr.map(arr => arr.slice(0, -1));
+    const second = wordsStr.map(arr => arr.slice(1, arr.length));
+
+    // Mask empty.
+    const nonEmptyMask = second.map(arr => arr.length > 0);
+    mask = mask.map((a, idx) => a && nonEmptyMask[idx]);
+    if (!mask.some(e => e)) {
+      return [words, mask];
+    }
+    const nonEmptyIndices = mask
+      .map((bool, idx) => bool ? idx : -1)
+      .filter(e => e !== -1);
+
+    const filteredFirst = nonEmptyIndices.map(idx => first[idx]);
+    const filteredSecond = nonEmptyIndices.map(idx => second[idx]);
+
+    // Get byte pair ranking in merge rules.
+    const pairs: string[][] = filteredFirst.map((firstSubArr, idx) => {
+      const secondSubArr = filteredSecond[idx];
+
+      return firstSubArr.map((char, idx) => `${char} ${secondSubArr[idx]}`);
+    });
+    const pairRanksTensor = this.mergeRanks.lookup(
+      pairs.map(arr => tensor(arr)));
+    const pairRanks = tensorArrTo2DArr(pairRanksTensor) as number[][];
+
+    // Get BPE pair ranks.
+    const minPairRank = pairRanks.map(
+      arr => arr.reduce((a, b) => Math.min(a, b), Infinity));
+    const pairFoundMask = minPairRank.map(
+      rank => rank !== this.mergeRanksLookupDefault);
+
+    // Tokens that cannot be further merged are marked as finished.
+    for (const [idx, index] of nonEmptyIndices.entries()) {
+      const update = pairFoundMask[idx];
+      mask[index] = update;
+    }
+    if (!mask.some(e => e)) {
+      return [words, mask];
+    }
+
+    function argMin(arr: number[]): number {
+      return arr.indexOf(arr.reduce((a, b) => Math.min(a, b), Infinity));
+    }
+
+    const maskedPairRanks = pairRanks.filter((_, idx) => pairFoundMask[idx]);
+    const minPairRankIndices = maskedPairRanks.map(arr => argMin(arr));
+
+    // Get words and pairs to process.
+    const unfinishedWords = wordsStr.filter((_, idx) => mask[idx]);
+
+    const pairLeft = unfinishedWords.map(
+      (word, idx) => word[minPairRankIndices[idx]]);
+
+    const pairRight = unfinishedWords.map(
+      (word, idx) => word[minPairRankIndices[idx] + 1]);
+
+    const mergedPairs = pairLeft.map((left, idx) => {
+      const right = pairRight[idx];
+      return `${left}${right}`;
+    });
+    const unfinishedWordsIndices = mask
+      .map((_, idx) => idx)
+      .filter((_, idx) => mask[idx]);
+
+    const mergedPairIndices = unfinishedWordsIndices.map(
+      (index, idx) => [index, minPairRankIndices[idx]]);
+    const emptyStringIndices = unfinishedWordsIndices.map(
+      (index, idx) => [index, minPairRankIndices[idx] + 1]);
+
+    for (const [idx, indices] of mergedPairIndices.entries()) {
+      const [wordIdx, charIdx] = indices;
+      const mergedPair = mergedPairs[idx];
+      wordsStr[wordIdx][charIdx] = mergedPair;
+    }
+
+    for (const indices of emptyStringIndices) {
+      const [wordIdx, charIdx] = indices;
+      wordsStr[wordIdx][charIdx] = '';
+    }
+
+    words = wordsStr.map(word => tensor(word));
+    words = removeStringsFromInputs(words, '');
+
+    return [words, mask];
   }
 
-  override detokenize(inputs: Tensor1D[]): Tensor1D {
-    const stringInputs = inputs.map(
-      input => input.dataSync() as unknown as string[]);
-    return tensor1d(stringInputs.map(str => str.join(' ')));
+  /**
+   * Perform byte-pair merge for each word in the inputs.
+   */
+  private bpeMerge(words: Tensor[]): Tensor[] {
+    const numWords = words.length;
+
+    // Merge bytes.
+    function loopCondition(mask: boolean[]): boolean {
+      return mask.some(e => e);
+    }
+
+    const initialMask: boolean[] = Array(numWords).fill(true);
+
+    let mergedWords = words;
+    let mask = initialMask;
+    while (loopCondition(mask)) {
+      [mergedWords, mask] = this.bpeMergeOneStep(mergedWords, mask);
+    }
+
+    return mergedWords;
+  }
+
+  /**
+   * Map token bytes to unicode using `byte2unicode`.
+   */
+  private transformBytes(tokens: Tensor): Tensor[] {
+    const tokensStr = tensorToArr(tokens) as string[];
+
+    const splitBytes = tokensStr.map(
+      token => tensor(token.split('').map(c => c.charCodeAt(0))));
+    const splitUnicode = this.byte2Unicode.lookup(splitBytes);
+
+    return splitUnicode;
+  }
+
+  /**
+   * Process unseen tokens and add to cache.
+   */
+  private bpeMergeAndUpdateCache(tokens: Tensor) {
+    const words = this.transformBytes(tokens);
+    const tokenizedWordsTensor = this.bpeMerge(words);
+    const tokenizedWords = tensorArrTo2DArr(tokenizedWordsTensor) as string[][];
+
+    // For each word, join all its token by a whitespace,
+    // e.g., ["dragon", "fly"] => "dragon fly" for hash purpose.
+    const joinedTokens = tokenizedWords.map(word => word.join(' '));
+
+    this.cache.insert(tokens, joinedTokens);
+  }
+
+  tokenize(inputs: Tensor): Tensor[] {
+    if (this.addPrefixSpace) {
+      const strInputs = tensorToArr(inputs) as string[];
+      inputs = tensor(strInputs.map(word => ' ' + word));
+    }
+
+    const rawTokensTensor = splitStringsForBpe(inputs, this.unsplittableTokens);
+    const rawTokens = tensorArrTo2DArr(rawTokensTensor) as string[][];
+
+    const tokenRowSplits = [0];
+    for (const [idx, token] of rawTokens.entries()) {
+      tokenRowSplits.push(tokenRowSplits[idx] + token.length);
+    }
+
+    const flatTokens = rawTokens.reduce((acc, e) => acc.concat(e), []);
+
+    // Check cache.
+    const cacheLookup = this.cache.lookup(flatTokens);
+    const cacheMask = cacheLookup.map(e => e === '');
+
+    const emptyFlatTokensMask = flatTokens.map(e => e !== '');
+    const hasUnseenWords = cacheMask.map(
+      (bool, idx) => bool && emptyFlatTokensMask[idx]).some(e => e);
+
+    const processUnseenTokens = (): string[]  => {
+      const unseenTokens = flatTokens.filter((_, idx) => cacheMask[idx]);
+      this.bpeMergeAndUpdateCache(tensor(unseenTokens));
+      return this.cache.lookup(flatTokens);
+    };
+
+    // If `has_unseen_words == True`, it means not all tokens are in cache,
+    // we will process the unseen tokens. Otherwise return the cache lookup.
+    const tokenizedWords =
+      hasUnseenWords ? processUnseenTokens() : cacheLookup;
+
+    const tokensTensor = this.tokenToIdMap.lookup(
+      tokenizedWords.map(word => tensor(word.split(' '))));
+    const tokens = tokensTensor.map(t => Array.from(t.dataSync()));
+
+    // Unflatten to match input.
+    const newTokenRowSplits = [0];
+    for (const [idx, token] of tokens.entries()) {
+      newTokenRowSplits.push(newTokenRowSplits[idx] + token.length);
+    }
+    const newFlatTokens = tokens.reduce((acc, e) => acc.concat(e), []);
+    const gatheredIndices =
+      tokenRowSplits.map(index => newTokenRowSplits[index]);
+
+    const token2D: number[][] = [];
+    for (let i = 0; i < gatheredIndices.length - 1; i++) {
+      const [start, end] = [gatheredIndices[i], gatheredIndices[i+1]];
+      const row = newFlatTokens.slice(start, end);
+      token2D.push(row);
+    }
+
+    // Convert to a dense output if `sequence_length` is set.
+    if (this.sequenceLength) {
+      // pad or truncate
+      const maxLengths = token2D.map(arr => arr.reduce(
+          (a, b) => Math.max(a, b), -Infinity));
+      const maxLength = maxLengths.reduce((a, b) => Math.max(a, b), -Infinity);
+
+      token2D.map(tokenArr => {
+        const pad: number[] = Array(maxLength - tokenArr.length).fill(0);
+
+        const newRow = [];
+        for (let i = 0; i < pad.length; i++) {
+          if (pad[i] === undefined) {
+            break;
+          }
+          newRow.push(tokenArr[i]);
+        }
+        return newRow;
+      });
+    }
+
+    return token2D.map(token => tensor(token));
+  }
+
+  override detokenize(inputs: Tensor[]): Tensor {
+    const unicodeText = this.idToTokenMap.lookup(inputs)
+      .map(t => (tensorToArr(t) as string[]).join(''));
+
+    return tensor(unicodeText);
   }
 }
 serialization.registerClass(BytePairTokenizer);

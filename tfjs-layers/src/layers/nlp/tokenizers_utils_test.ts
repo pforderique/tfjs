@@ -19,7 +19,8 @@ import { tensor, test_util } from '@tensorflow/tfjs-core';
 
 import { BytePairTokenizerCache, SPLIT_PATTERN_1, bytesToUnicode,
   createAltsForUnsplittableTokens, createStaticHashtable, regexSplit,
-  removeStringsFromInputs, splitStringsForBpe } from './tokenizers_utils';
+  removeStringsFromInputs, splitStringsForBpe, tensorArrTo2DArr,
+  tensorToArr } from './tokenizers_utils';
 import { expectTensorsClose } from '../../utils/test_utils';
 
 describe('bytesToUnicode', () => {
@@ -67,7 +68,7 @@ describe('bytesToUnicode', () => {
 });
 
 describe('createStaticHashtable', () => {
-  it('creates StaticHashTable<number, string> correctly', async () => {
+  it('creates StaticHashTable<number, string> correctly', () => {
     const [bytesList, charsList] = bytesToUnicode();
     const byte2Unicode = createStaticHashtable(
       Array.from(bytesList), charsList, '');
@@ -76,11 +77,11 @@ describe('createStaticHashtable', () => {
     expect(byte2Unicode.get(-1)).toBe('');
 
     expectTensorsClose(
-      (await byte2Unicode.lookup([tensor([33, 133])]))[0],
+      (byte2Unicode.lookup([tensor([33, 133])]))[0],
       tensor(['!', '\x85']));
   });
 
-  it('creates StaticHashTable<string, number> correctly', async () => {
+  it('creates StaticHashTable<string, number> correctly', () => {
     const [bytesList, charsList] = bytesToUnicode();
     const unicode2Byte = createStaticHashtable(
       charsList, Array.from(bytesList), -1);
@@ -89,7 +90,7 @@ describe('createStaticHashtable', () => {
     expect(unicode2Byte.get('😁')).toBe(-1);
 
     expectTensorsClose(
-      (await unicode2Byte.lookup([tensor(['!', '{'])]))[0],
+      (unicode2Byte.lookup([tensor(['!', '{'])]))[0],
       tensor([33, 123]));
   });
 });
@@ -101,43 +102,42 @@ describe('BytePairTokenizerCache', () => {
     cache = new BytePairTokenizerCache();
   });
 
-  it('inserts strings and retrieves correctly', async () => {
-    await cache.insert(
-      ['butterfly', 'dragonfly'], ['but ter fly', 'dragon fly']);
+  it('inserts strings and retrieves correctly', () => {
+    cache.insert(['butterfly', 'dragonfly'], ['but ter fly', 'dragon fly']);
 
-    test_util.expectArraysEqual(
-      await cache.lookup(['butterfly']), ['but ter fly']);
+    test_util.expectArraysEqual(cache.lookup(['butterfly']), ['but ter fly']);
   });
 
-  it('inserts tensors and retrieves correctly', async () => {
-    await cache.insert(
+  it('inserts tensors and retrieves correctly', () => {
+    cache.insert(
       tensor(['butterfly', 'dragonfly']), ['but ter fly', 'dragon fly']);
 
     test_util.expectArraysEqual(
-      await cache.lookup(tensor(['dragonfly'])), ['dragon fly']);
+      cache.lookup(tensor(['dragonfly'])), ['dragon fly']);
   });
 });
 
 describe('removeStringsFromInputs', () => {
-  it ('removes nothing successfully', async () => {
+  it ('removes nothing successfully', () => {
     const inputs = [tensor(['butterfly']), tensor(['butter'])];
     const stringToRemove = '६';
 
-    const result = await removeStringsFromInputs(inputs, stringToRemove);
+    const result = removeStringsFromInputs(inputs, stringToRemove);
 
     expect(result.length).toBe(2);
     expectTensorsClose(result[0], tensor(['butterfly']));
     expectTensorsClose(result[1], tensor(['butter']));
   });
 
-  it ('removes strings successfully', async () => {
+  it ('removes strings successfully', () => {
     const inputs = [tensor(['butterfly']), tensor(['butter'])];
     const stringToRemove = 'butter';
 
-    const result = await removeStringsFromInputs(inputs, stringToRemove);
+    const result = removeStringsFromInputs(inputs, stringToRemove);
 
-    expect(result.length).toBe(1);
+    expect(result.length).toBe(2);
     expectTensorsClose(result[0], tensor(['butterfly']));
+    expectTensorsClose(result[1], tensor([]));
   });
 });
 
@@ -181,43 +181,64 @@ describe('regexSplit', () => {
   });
 
   it ('keeps string delimiter', () => {
-    test_util.expectArraysEqual(regexSplit(['sp'], 's', 's'), [['s', 'p']]);
+    test_util.expectArraysEqual(regexSplit(['sp'], 's', true), [['s', 'p']]);
     test_util.expectArraysEqual(
-      regexSplit(['\xc4\xb4s', 'p'], 'p', 'p'), [['Ä´s'], ['p']] );
+      regexSplit(['\xc4\xb4s', 'p'], 'p', true), [['Ä´s'], ['p']] );
   });
 
   it('splits regex delimiter', () => {
-    const result = regexSplit(['ĵs', 'ĵp'], SPLIT_PATTERN_1, SPLIT_PATTERN_1);
+    const result = regexSplit(['ĵs', 'ĵp'], SPLIT_PATTERN_1, true);
 
     test_util.expectArraysEqual(result, [['ĵs'], ['ĵp']]);
   });
 
   it('works with periods', () => {
     const result = regexSplit(
-      ['brown.', 'black.'], SPLIT_PATTERN_1, SPLIT_PATTERN_1);
+      ['brown.', 'black.'], SPLIT_PATTERN_1, true);
 
     test_util.expectArraysEqual(result, [['brown', '.'], ['black', '.']]);
   });
 });
 
 describe('splitStringsForBpe', () => {
-  it ('splits with unsplittable tokens', async () => {
+  it ('splits with unsplittable tokens', () => {
     const inputs = tensor(['sp']);
     const unsplittableTokens = ['s', 'p'];
 
-    const result = await splitStringsForBpe(inputs, unsplittableTokens);
+    const result = splitStringsForBpe(inputs, unsplittableTokens);
 
     expect(result.length).toBe(1);
     expectTensorsClose(result[0], tensor(['s', 'p']));
   });
 
-  it ('splits with no unsplittable tokens', async () => {
+  it ('splits with no unsplittable tokens', () => {
     const inputs = tensor(['brown.', 'black.']);
 
-    const result = await splitStringsForBpe(inputs);
+    const result = splitStringsForBpe(inputs);
 
     expect(result.length).toBe(2);
     expectTensorsClose(result[0], tensor(['brown', '.']));
     expectTensorsClose(result[1], tensor(['black', '.']));
+  });
+});
+
+describe('tensor to array functions', () => {
+  it('tensorToArr', () => {
+    const inputStr = tensor(['these', 'are', 'strings', '.']);
+    const inputNum = tensor([2, 11, 15]);
+
+    test_util.expectArraysEqual(
+      tensorToArr(inputStr) as string[], ['these', 'are', 'strings', '.']);
+    test_util.expectArraysEqual(tensorToArr(inputNum) as number[], [2, 11, 15]);
+  });
+
+  it('tensorArrTo2DArr', () => {
+    const inputStr = [tensor(['these', 'are']), tensor(['strings', '.'])];
+    const inputNum = [tensor([2, 11]), tensor([15])];
+
+    test_util.expectArraysEqual(
+      tensorArrTo2DArr(inputStr) as string[][], [['these', 'are'], ['strings', '.']]);
+    test_util.expectArraysEqual(
+      tensorArrTo2DArr(inputNum) as number[][], [[2, 11], [15]]);
   });
 });
