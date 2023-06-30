@@ -20,12 +20,14 @@
  */
 
 /* Original source: keras-nlp/models/gpt2/gpt2_tokenizer.py */
-import { Tensor, serialization } from '@tensorflow/tfjs-core';
+import { Tensor, serialization, tensor } from '@tensorflow/tfjs-core';
 
 import { LayerArgs } from '../../../../engine/topology';
 // import { NotImplementedError, ValueError } from '../../../../errors';
 import { Preprocessor } from '../preprocessor';
 import { GPT2Tokenizer } from './gpt2_tokenizer';
+import { StartEndPacker } from '../start_end_packer';
+import { NotImplementedError, ValueError } from '../../../../errors';
 
 export declare interface GPT2PreprocessorArgs extends LayerArgs {
   /**
@@ -113,23 +115,94 @@ export declare interface GPT2PreprocessorOptions {
  * ```
  */
 export class GPT2Preprocessor extends Preprocessor {
-  // private readonly tokenizer: GPT2Tokenizer;
-  // private readonly sequenceLength: number;
-  // private readonly addStartToken: boolean;
-  // private readonly addEndToken: boolean;
+  private readonly sequenceLength: number;
+  private readonly addStartToken: boolean;
+  private readonly addEndToken: boolean;
+  private readonly packer: StartEndPacker;
 
   constructor(args: GPT2PreprocessorArgs) {
-    console.log('');
     super(args);
+    this.tokenizer = args.tokenizer;
+    this.sequenceLength = args.sequenceLength ?? 1024;
+    this.addStartToken = args.addStartToken ?? true;
+    this.addEndToken = args.addEndToken ?? true;
+
+    const gpt2Tokenizer = this.tokenizer as GPT2Tokenizer;
+    this.packer = new StartEndPacker({
+      startValue: gpt2Tokenizer.startTokenId,
+      endValue: gpt2Tokenizer.endTokenId,
+      padValue: gpt2Tokenizer.padTokenId,
+      sequenceLength: this.sequenceLength,
+    });
   }
 
   override getConfig(): serialization.ConfigDict {
-    const config = super.getConfig();
-    // In the constructor, we pass the list of special tokens to the
-    // `unsplittableTokens` arg of the superclass' constructor. Hence, we
-    // delete it from the config here.
-    delete config.unsplittableTokens;
+    const config = {
+      sequenceLength: this.sequenceLength,
+      addStartToken: this.addStartToken,
+      addEndToken: this.addEndToken,
+    };
+    const baseConfig = super.getConfig();
+    Object.assign(config, baseConfig);
     return config;
+  }
+
+  override call(
+    inputs: Tensor|Tensor[], kwargs: GPT2PreprocessorOptions): Tensor|Tensor[] {
+    if (inputs instanceof Array) {
+      if (inputs.length !== 1) {
+        throw new ValueError(
+          'GPT2 requires each input feature to contain only ' +
+          `one segment, but received ${inputs.length}. If you are using GPT2 ` +
+          'for a multi-segment classification task, please refer to ' +
+          'classification models like BERT or RoBERTa.'
+        );
+      }
+      inputs = inputs[0];
+    }
+
+    const sequenceLength = kwargs.sequenceLength ?? this.sequenceLength;
+    const [tokenIds, paddingMask] = this.packer.callAndReturnPaddingMask(
+      this.tokenizer.call(inputs),
+      {
+        sequenceLength: sequenceLength,
+        addStartValue: this.addStartToken,
+        addEndValue: this.addEndToken
+      }
+    );
+
+    const x = {
+      tokenIds: tokenIds,
+      paddingMask: paddingMask
+    };
+
+    function packXYSampleWeight(x: any, y: any, sampleWeight: any): Tensor {
+      if (y === undefined) {
+        if (!(x instanceof Array)) {
+          return tensor(x);
+        } else {
+          return tensor([x]);
+        }
+      } else if (sampleWeight === undefined) {
+        return tensor([x, y]);
+      } else {
+        return tensor([x, y, sampleWeight]);
+      }
+    }
+
+    return packXYSampleWeight(x, kwargs.y, kwargs.sampleWeight);
+  }
+
+  static override presets<T extends serialization.Serializable>(
+    cls: serialization.SerializableConstructor<T>): {} {
+    throw new NotImplementedError(
+      'GPT2 Preprocessor `presets` not implemented yet.'
+    );
+  }
+
+  static override tokenizerCls<T extends serialization.Serializable>(
+    cls: serialization.SerializableConstructor<T>) {
+    return GPT2Tokenizer;
   }
 }
 serialization.registerClass(GPT2Preprocessor);
