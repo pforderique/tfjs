@@ -20,97 +20,107 @@
  */
 
 /* Original source: keras-nlp/models/gpt2/gpt2_tokenizer.py */
-import { serialization } from '@tensorflow/tfjs-core';
+import { Tensor, serialization } from '@tensorflow/tfjs-core';
 
 import { LayerArgs } from '../../../../engine/topology';
-import { BytePairTokenizer } from '../../tokenizers';
-import { NotImplementedError, ValueError } from '../../../../errors';
+// import { NotImplementedError, ValueError } from '../../../../errors';
+import { Preprocessor } from '../preprocessor';
+import { GPT2Tokenizer } from './gpt2_tokenizer';
 
-export declare interface GPT2TokenizerArgs extends LayerArgs {
+export declare interface GPT2PreprocessorArgs extends LayerArgs {
   /**
-   * Maps token to integer ids
+   * A GPT2Tokenizer instance.
    */
-  vocabulary: Map<string, number>;
+  tokenizer: GPT2Tokenizer;
 
   /**
-   * Array. Contains the merge rule.
+   * The length of the packed inputs.
+   * Defaults to 1024.
    */
-  merges: string[];
+  sequenceLength?: number;
+
+  /**
+   * If `true`, the preprocessor will prepend the tokenizer start token to each
+   * input sequence.
+   * Defaults to `true`.
+   */
+  addStartToken?: boolean;
+
+  /**
+   * If `true`, the preprocessor will prepend the tokenizer end token to each
+   * input sequence.
+   * Defaults to `true`.
+   */
+  addEndToken?: boolean;
+}
+
+export declare interface GPT2PreprocessorOptions {
+  /**
+   * A string, `tf.Tensor`, or list of strings.
+   */
+  x: string|Tensor|string[];
+
+  /**
+   * Any label data. Will be passed through unaltered.
+   */
+  y?: any;
+
+  /**
+   * Any label weight data. Will be passed through unaltered.
+   */
+  sampleWeight?: any;
+
+  /**
+   * Pass to override the configured `sequenceLength` of the layer.
+   */
+  sequenceLength?: number;
 }
 
 /**
- * A GPT-2 tokenizer using Byte-Pair Encoding subword segmentation.
+ * GPT2 preprocessing layer which tokenizes and packs inputs.
  *
- * This tokenizer class will tokenize raw strings into integer sequences and
- * is based on `BytePairTokenizer`. Unlike the underlying tokenizer, it will
- * check for all special tokens needed by GPT-2 models and provides a
- * `fromPreset()` method to automatically download a matching vocabulary for a
- * GPT-2 preset.
+ * This preprocessing layer will do 2 things:
  *
- * This tokenizer does not provide truncation or padding of inputs.
+ * - Tokenize the inputs using the `tokenizer`.
+ * - Construct a dictionary with keys `"tokenIds"`, `"paddingMask"`, that can
+ *     be passed directly to a `GPT2Backbone`.
  *
- * When given an input of a batch of strings (`tf.Tensor`), the layer will
- * output a `tf.Tensor[]`.
+ * The call method of this layer accepts three arguments, `x`, `y`, and
+ * `sampleWeight`. `x` can be a string or tensor representing a single
+ * segment, a list of strings representing a batch of single segments,
+ * or a list of tensors representing multiple segments to be packed together.
+ * `y` and `sampleWeight` are both optional, can have any format, and will be
+ * passed through unaltered.
+ *
+ * `GPT2Preprocessor` forces the input to have only one segment, as GPT2 is
+ * mainly used for generation tasks. For tasks having multi-segment inputs
+ * like "glue/mnli", please use a model designed for classification purposes
+ * such as BERT or RoBERTa.
  *
  * Examples:
  *
+ * Directly calling the layer on data.
  * ```js
- * const vocabulary = new Map([
- *    ['<|endoftext|>', 0], ['butter', 1], ['fly', 2]]);
- * const merges = ['b u', 't t', 'e r', 'bu tt', 'butt er', 'f l', 'fl y'];
- * const tokenizer = new BytePairTokenizer({vocabulary, merges});
+ * const features =  ['a quick fox.', 'a fox quick.'];
+ * const vocabulary =
+ *    new Map([['<|endoftext|>', 0], ['a', 4], ['Ġquick', 5], ['Ġfox', 6]]);
+ * const merges =
+ *    ['Ġ q', 'u i', 'c k', 'ui ck', 'Ġq uick', 'Ġ f', 'o x', 'Ġf ox'];
+ * const tokenizer = GPT2Tokenizer({vocabulary, merges});
  *
- * tokenizer.tokenize(tensor(['butterfly']))[0].print();
- * tokenizer.tokenize(tensor(['butterfly, butter<|endoftext|>']))[1].print();
- *
- * tokenizer.detokenize([tensor([1, 2, 0])]).print();
+ * const preprocessor = GPT2Preprocessor({tokenizer});
+ * preprocessor.call(tensor(['the quick brown fox jumped.']))[0].print();
+ * ```
  */
-export class GPT2Tokenizer extends BytePairTokenizer {
-  private readonly _endTokenId: number;
-  private readonly _startTokenId: number;
-  private readonly _padTokenId: number;
+export class GPT2Preprocessor extends Preprocessor {
+  // private readonly tokenizer: GPT2Tokenizer;
+  // private readonly sequenceLength: number;
+  // private readonly addStartToken: boolean;
+  // private readonly addEndToken: boolean;
 
-  constructor(args: GPT2TokenizerArgs) {
-
-    // Special tokens.
-    const endToken = '<|endoftext|>';
-
-    super({
-      vocabulary: args.vocabulary,
-      merges: args.merges,
-      unsplittableTokens: [endToken]
-    });
-
-    // Check whether special tokens are present in the vocabulary.
-    if (!this.vocabulary.includes(endToken)) {
-      throw new ValueError(
-        `Cannot find token '${endToken}' in the provided 'vocabulary'. Please` +
-        ` provide '${endToken}' in your 'vocabulary' or use a pretrained` +
-        ` 'vocabulary' name.`
-      );
-    }
-
-    this._endTokenId = this.tokenToId(endToken);
-    this._startTokenId = this._endTokenId;
-    this._padTokenId = 0;
-  }
-
-  get endTokenId() {
-    return this._endTokenId;
-  }
-
-  get startTokenId() {
-    return this._startTokenId;
-  }
-
-  get padTokenId() {
-    return this._padTokenId;
-  }
-
-  static presets<T extends serialization.Serializable>(
-    cls: serialization.SerializableConstructor<T>) {
-    // TODO(orderique): Discuss best way to load a preset vocabulary.
-    throw new NotImplementedError('Not implemented yet.');
+  constructor(args: GPT2PreprocessorArgs) {
+    console.log('');
+    super(args);
   }
 
   override getConfig(): serialization.ConfigDict {
@@ -122,4 +132,4 @@ export class GPT2Tokenizer extends BytePairTokenizer {
     return config;
   }
 }
-serialization.registerClass(GPT2Tokenizer);
+serialization.registerClass(GPT2Preprocessor);
