@@ -18,10 +18,10 @@
 /* Original source: keras-nlp/models/preprocessor.py */
 import { serialization } from '@tensorflow/tfjs-core';
 
-import { Layer } from '../../../engine/topology';
-import { Kwargs } from '../../../types';
+import { Layer, LayerArgs } from '../../../engine/topology';
 import { Tokenizer } from '../tokenizers';
-import { NotImplementedError } from 'tfjs-layers/src/errors';
+import { Kwargs } from '../../../types';
+import { deserializeKerasObject } from '../../../utils/generic_utils';
 
 /**
  * Base class for model Preprocessors.
@@ -32,7 +32,7 @@ export class Preprocessor extends Layer {
 
   private _tokenizer: Tokenizer;
 
-  constructor(args: Kwargs) {
+  constructor(args: LayerArgs) {
     super(args);
   }
 
@@ -60,24 +60,15 @@ export class Preprocessor extends Layer {
     cls: serialization.SerializableConstructor<T>,
     config: serialization.ConfigDict
   ): T {
-    // TODO(orderique): Find out the correct way to deserialize this.
-    throw new NotImplementedError('Not implemented yet for Preprocessors.');
+    const kwargs: Kwargs = config;
+
+    if ('tokenizer' in config && !(config.tokenizer instanceof Tokenizer)) {
+      kwargs.tokenizer =
+        deserializeKerasObject(config.tokenizer as serialization.ConfigDict);
+    }
+    return new cls(kwargs);
   }
 
   static tokenizerCls<T extends serialization.Serializable>(
     cls: serialization.SerializableConstructor<T>) {}
-
-  static presets<T extends serialization.Serializable>(
-    cls: serialization.SerializableConstructor<T>) {
-    return {};
-  }
-
-  static fromPreset<T extends serialization.Serializable>(
-    cls: serialization.SerializableConstructor<T>,
-    preset: string,
-    kwargs: Kwargs
-  ) {
-    // TODO(orderique): Discuss the right way to approach this.
-    throw new NotImplementedError('Not implemented yet.');
-  }
 }
