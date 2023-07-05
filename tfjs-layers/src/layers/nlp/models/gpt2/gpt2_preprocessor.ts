@@ -23,7 +23,6 @@
 import { Tensor, serialization } from '@tensorflow/tfjs-core';
 
 import { LayerArgs } from '../../../../engine/topology';
-// import { NotImplementedError, ValueError } from '../../../../errors';
 import { Preprocessor } from '../preprocessor';
 import { GPT2Tokenizer } from './gpt2_tokenizer';
 
@@ -119,7 +118,6 @@ export class GPT2Preprocessor extends Preprocessor {
   // private readonly addEndToken: boolean;
 
   constructor(args: GPT2PreprocessorArgs) {
-    console.log('');
     super(args);
   }
 
