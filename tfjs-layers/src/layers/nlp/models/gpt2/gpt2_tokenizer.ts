@@ -24,7 +24,7 @@ import { serialization } from '@tensorflow/tfjs-core';
 
 import { LayerArgs } from '../../../../engine/topology';
 import { BytePairTokenizer } from '../../tokenizers';
-import { NotImplementedError, ValueError } from '../../../../errors';
+import { ValueError } from '../../../../errors';
 
 export declare interface GPT2TokenizerArgs extends LayerArgs {
   /**
@@ -105,12 +105,6 @@ export class GPT2Tokenizer extends BytePairTokenizer {
 
   get padTokenId() {
     return this._padTokenId;
-  }
-
-  static presets<T extends serialization.Serializable>(
-    cls: serialization.SerializableConstructor<T>) {
-    // TODO(orderique): Discuss best way to load a preset vocabulary.
-    throw new NotImplementedError('Not implemented yet.');
   }
 
   override getConfig(): serialization.ConfigDict {
