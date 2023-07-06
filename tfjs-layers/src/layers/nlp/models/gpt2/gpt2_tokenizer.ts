@@ -16,10 +16,10 @@
  */
 
 /**
- * GPT-2 preprocessor layer.
+ * GPT-2 tokenizer layer.
  */
 
-/* Original source: keras-nlp/models/gpt2/gpt2_preprocessor.py */
+/* Original source: keras-nlp/models/gpt2/gpt2_tokenizer.py */
 import { serialization } from '@tensorflow/tfjs-core';
 
 import { LayerArgs } from '../../../../engine/topology';
@@ -43,9 +43,7 @@ export declare interface GPT2TokenizerArgs extends LayerArgs {
  *
  * This tokenizer class will tokenize raw strings into integer sequences and
  * is based on `BytePairTokenizer`. Unlike the underlying tokenizer, it will
- * check for all special tokens needed by GPT-2 models and provides a
- * `fromPreset()` method to automatically download a matching vocabulary for a
- * GPT-2 preset.
+ * check for all special tokens needed by GPT-2 models.
  *
  * This tokenizer does not provide truncation or padding of inputs.
  *
