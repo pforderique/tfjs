@@ -73,8 +73,8 @@ export declare interface GPT2PreprocessorOptions {
 }
 
 export declare interface PreprocessorOutputs {
-  tokenIds: Tensor|Tensor[],
-  paddingMask: Tensor|Tensor[]
+  tokenIds: Tensor[],
+  paddingMask: Tensor[]
 }
 
 function packXYSampleWeight(
@@ -193,8 +193,8 @@ export class GPT2Preprocessor extends Preprocessor {
     );
 
     return {
-      tokenIds: tokenIds,
-      paddingMask: paddingMask
+      tokenIds: tokenIds as Tensor[],
+      paddingMask: paddingMask as Tensor[]
     };
   }
 

@@ -19,13 +19,14 @@
  * Unit Tests for GPT2Preprocessor.
  */
 
-import { Tensor, tensor } from '@tensorflow/tfjs-core';
+import { tensor } from '@tensorflow/tfjs-core';
 
-// import { expectTensorsClose } from '../../../../utils/test_utils';
+import { expectTensorsClose } from '../../../../utils/test_utils';
 import { GPT2Tokenizer } from './gpt2_tokenizer';
 import { GPT2Preprocessor, PreprocessorOutputs } from './gpt2_preprocessor';
+import { tensorArrTo2DArr } from '../../tokenizers_utils';
 
-describe('GPT2Tokenizer', () => {
+describe('GPT2Preprocessor', () => {
   let vocabulary: Map<string, number>;
   let merges: string[];
   let preprocessor: GPT2Preprocessor;
@@ -53,19 +54,17 @@ describe('GPT2Tokenizer', () => {
 
   it('tokenize', () => {
     const inputData = tensor(['airplane at airport']);
-    const expectedOutput = {
-      tokenIds: [tensor([6, 1, 3, 4, 2, 5, 6, 0])],
-      paddingMask: [tensor([1, 1, 1, 1, 1, 1, 1, 0])],
-    }
 
     const output =
       preprocessor.callAndPackArgs(inputData, {}) as PreprocessorOutputs;
 
-    expect(output).toEqual(jasmine.objectContaining(expectedOutput));
+    expectTensorsClose(output.tokenIds[0], tensor([6, 1, 3, 4, 2, 5, 6, 0]));
+    expectTensorsClose(
+      output.paddingMask[0], tensor([1, 1, 1, 1, 1, 1, 1, 0], [8], 'bool'));
   });
 
   it('no start end token', () => {
-    const inputData = tensor(Array<string>(4).fill('airplane at airport'));
+    const inputData = tensor(Array<string>(2).fill('airplane at airport'));
     preprocessor = new GPT2Preprocessor({
       tokenizer: new GPT2Tokenizer({vocabulary, merges}),
       sequenceLength: 8,
@@ -73,13 +72,20 @@ describe('GPT2Tokenizer', () => {
       addEndToken: false,
     });
     const expectedOutput = {
-      tokenIds: Array<Tensor>(4).fill(tensor([1, 3, 4, 2, 5, 0, 0, 0])),
-      paddingMask: Array<Tensor>(4).fill(tensor([1, 1, 1, 1, 1, 0, 0, 0])),
+      tokenIds: Array<number[]>(2).fill([1, 3, 4, 2, 5, 0, 0, 0]),
+      paddingMask: Array<number[]>(2).fill([1, 1, 1, 1, 1, 0, 0, 0]),
     }
 
     const output =
       preprocessor.callAndPackArgs(inputData, {}) as PreprocessorOutputs;
 
-    expect(output).toEqual(jasmine.objectContaining(expectedOutput));
+    const outputTokenIds = tensorArrTo2DArr(output.tokenIds) as number[][];
+    const outputMask = tensorArrTo2DArr(output.paddingMask) as number[][];
+
+    // console.log('outputTokenIds', outputTokenIds);
+    // console.log('outputTokenIds non number',  Array.from(outputTokenIds));
+
+    expect(outputTokenIds).toEqual(expectedOutput.tokenIds);
+    expect(outputMask).toEqual(expectedOutput.paddingMask);
   });
 });

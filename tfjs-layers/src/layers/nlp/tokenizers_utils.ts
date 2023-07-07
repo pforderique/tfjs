@@ -250,7 +250,7 @@ export function regexSplit(
 }
 
 export function tensorToArr(input: Tensor): unknown[] {
-  return input.dataSync() as unknown as unknown[];
+  return Array.from(input.dataSync()) as unknown as unknown[];
 }
 
 export function tensorArrTo2DArr(inputs: Tensor[]): unknown[][] {
