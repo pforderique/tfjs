@@ -16,17 +16,17 @@
  */
 
 /**
- * GPT-2 preprocessing layers.
+ * GPT-2 preprocessor layer.
  */
 
-/* Original source: keras-nlp/models/gpt2/gpt2_tokenizer.py */
-import { Tensor, serialization, tensor } from '@tensorflow/tfjs-core';
+/* Original source: keras-nlp/models/gpt2/gpt2_preprocessor.py */
+import { Tensor, serialization } from '@tensorflow/tfjs-core';
 
 import { LayerArgs } from '../../../../engine/topology';
 import { Preprocessor } from '../preprocessor';
 import { GPT2Tokenizer } from './gpt2_tokenizer';
-import { StartEndPacker } from '../start_end_packer';
-import { NotImplementedError, ValueError } from '../../../../errors';
+import { StartEndPacker } from '../../preprocessing/start_end_packer';
+import { ValueError } from '../../../../errors';
 
 export declare interface GPT2PreprocessorArgs extends LayerArgs {
   /**
@@ -57,24 +57,39 @@ export declare interface GPT2PreprocessorArgs extends LayerArgs {
 
 export declare interface GPT2PreprocessorOptions {
   /**
-   * A string, `tf.Tensor`, or list of strings.
-   */
-  x: string|Tensor|string[];
-
-  /**
    * Any label data. Will be passed through unaltered.
    */
-  y?: any;
+  y?: Tensor;
 
   /**
    * Any label weight data. Will be passed through unaltered.
    */
-  sampleWeight?: any;
+  sampleWeight?: Tensor;
 
   /**
    * Pass to override the configured `sequenceLength` of the layer.
    */
   sequenceLength?: number;
+}
+
+export declare interface PreprocessorOutputs {
+  tokenIds: Tensor|Tensor[],
+  paddingMask: Tensor|Tensor[]
+}
+
+function packXYSampleWeight(
+  x: PreprocessorOutputs, y?: Tensor, sampleWeight?: Tensor):
+  PreprocessorOutputs
+  | [PreprocessorOutputs, Tensor]
+  | [PreprocessorOutputs, Tensor, Tensor] {
+
+  if (y === undefined) {
+    return x;
+  } else if (sampleWeight === undefined) {
+    return [x, y];
+  } else {
+    return [x, y, sampleWeight];
+  }
 }
 
 /**
@@ -148,6 +163,13 @@ export class GPT2Preprocessor extends Preprocessor {
 
   override call(
     inputs: Tensor|Tensor[], kwargs: GPT2PreprocessorOptions): Tensor|Tensor[] {
+    return this.callAndReturnPaddingMask(inputs, kwargs).tokenIds;
+  }
+
+  private callAndReturnPaddingMask(
+    inputs: Tensor|Tensor[],
+    kwargs: GPT2PreprocessorOptions
+  ): PreprocessorOutputs {
     if (inputs instanceof Array) {
       if (inputs.length !== 1) {
         throw new ValueError(
@@ -170,33 +192,22 @@ export class GPT2Preprocessor extends Preprocessor {
       }
     );
 
-    const x = {
+    return {
       tokenIds: tokenIds,
       paddingMask: paddingMask
     };
-
-    function packXYSampleWeight(x: any, y: any, sampleWeight: any): Tensor {
-      if (y === undefined) {
-        if (!(x instanceof Array)) {
-          return tensor(x);
-        } else {
-          return tensor([x]);
-        }
-      } else if (sampleWeight === undefined) {
-        return tensor([x, y]);
-      } else {
-        return tensor([x, y, sampleWeight]);
-      }
-    }
-
-    return packXYSampleWeight(x, kwargs.y, kwargs.sampleWeight);
   }
 
-  static override presets<T extends serialization.Serializable>(
-    cls: serialization.SerializableConstructor<T>): {} {
-    throw new NotImplementedError(
-      'GPT2 Preprocessor `presets` not implemented yet.'
-    );
+  /**
+   * Calls the layer and returns extra information like the paddingMask used to
+   * pack the sequence, the label data, and the sample weights used.
+   */
+  callAndPackArgs(inputs: Tensor|Tensor[], kwargs: GPT2PreprocessorOptions):
+    PreprocessorOutputs
+    | [PreprocessorOutputs, Tensor]
+    | [PreprocessorOutputs, Tensor, Tensor] {
+    const x = this.callAndReturnPaddingMask(inputs, kwargs);
+    return packXYSampleWeight(x, kwargs.y, kwargs.sampleWeight);
   }
 
   static override tokenizerCls<T extends serialization.Serializable>(
