@@ -24,7 +24,7 @@ import { tensor } from '@tensorflow/tfjs-core';
 import { expectTensorsClose } from '../../../../utils/test_utils';
 import { GPT2Tokenizer } from './gpt2_tokenizer';
 import { GPT2Preprocessor, PreprocessorOutputs } from './gpt2_preprocessor';
-import { tensorArrTo2DArr } from '../../tokenizers_utils';
+import { tensorArrTo2DArr } from '../../utils';
 
 describe('GPT2Preprocessor', () => {
   let vocabulary: Map<string, number>;
@@ -81,9 +81,6 @@ describe('GPT2Preprocessor', () => {
 
     const outputTokenIds = tensorArrTo2DArr(output.tokenIds) as number[][];
     const outputMask = tensorArrTo2DArr(output.paddingMask) as number[][];
-
-    // console.log('outputTokenIds', outputTokenIds);
-    // console.log('outputTokenIds non number',  Array.from(outputTokenIds));
 
     expect(outputTokenIds).toEqual(expectedOutput.tokenIds);
     expect(outputMask).toEqual(expectedOutput.paddingMask);

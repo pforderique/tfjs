@@ -24,7 +24,7 @@ import { Tensor, concat, serialization, tensor } from '@tensorflow/tfjs-core';
 
 import { Layer, LayerArgs } from '../../../engine/topology';
 import { ValueError } from '../../../errors';
-import { tensorToArr } from '../tokenizers_utils';
+import { tensorToArr } from '../utils';
 
 export declare interface StartEndPackerArgs extends LayerArgs {
   /**
