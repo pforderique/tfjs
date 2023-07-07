@@ -24,7 +24,7 @@ import { Tensor, tensor } from '@tensorflow/tfjs-core';
 import { GPT2Tokenizer } from './gpt2_tokenizer';
 import { GPT2Preprocessor, PreprocessorOutputs } from './gpt2_preprocessor';
 import { tensorArrTo2DArr } from '../../utils';
-import { expectTensorsClose } from 'tfjs-layers/src/utils/test_utils';
+import { expectTensorsClose } from '../../../../utils/test_utils';
 
 describe('GPT2Preprocessor', () => {
   let vocabulary: Map<string, number>;
