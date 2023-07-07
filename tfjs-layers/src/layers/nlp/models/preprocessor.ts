@@ -19,9 +19,9 @@
 import { serialization } from '@tensorflow/tfjs-core';
 
 import { Layer, LayerArgs } from '../../../engine/topology';
-import { Kwargs } from '../../../types';
 import { Tokenizer } from '../tokenizers';
-import { NotImplementedError } from '../../../errors';
+import { Kwargs } from '../../../types';
+import { deserializeKerasObject, serializeKerasObject } from '../../../utils/generic_utils';
 
 /**
  * Base class for model Preprocessors.
@@ -48,11 +48,8 @@ export class Preprocessor extends Layer {
   }
 
   override getConfig(): serialization.ConfigDict {
-    const config = {
-      tokenizer: this._tokenizer.getClassName(),
-    };
-    const baseConfig = super.getConfig();
-    Object.assign(config, baseConfig);
+    const config = super.getConfig();
+    config.tokenizer = serializeKerasObject(this.tokenizer);
     return config;
   }
 
@@ -60,24 +57,15 @@ export class Preprocessor extends Layer {
     cls: serialization.SerializableConstructor<T>,
     config: serialization.ConfigDict
   ): T {
-    // TODO(orderique): Find out the correct way to deserialize this.
-    throw new NotImplementedError('Not implemented yet for Preprocessors.');
+    const kwargs: Kwargs = config;
+
+    if ('tokenizer' in config && !(config.tokenizer instanceof Tokenizer)) {
+      kwargs.tokenizer =
+        deserializeKerasObject(config.tokenizer as serialization.ConfigDict);
+    }
+    return new cls(kwargs);
   }
 
   static tokenizerCls<T extends serialization.Serializable>(
     cls: serialization.SerializableConstructor<T>) {}
-
-  static presets<T extends serialization.Serializable>(
-    cls: serialization.SerializableConstructor<T>) {
-    return {};
-  }
-
-  static fromPreset<T extends serialization.Serializable>(
-    cls: serialization.SerializableConstructor<T>,
-    preset: string,
-    kwargs: Kwargs
-  ) {
-    // TODO(orderique): Discuss the right way to approach this.
-    throw new NotImplementedError('Not implemented yet.');
-  }
 }

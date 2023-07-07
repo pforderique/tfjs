@@ -23,7 +23,6 @@
 import { Tensor, serialization, tensor } from '@tensorflow/tfjs-core';
 
 import { LayerArgs } from '../../../../engine/topology';
-// import { NotImplementedError, ValueError } from '../../../../errors';
 import { Preprocessor } from '../preprocessor';
 import { GPT2Tokenizer } from './gpt2_tokenizer';
 import { StartEndPacker } from '../start_end_packer';
