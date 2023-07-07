@@ -21,7 +21,6 @@
 
 import { tensor } from '@tensorflow/tfjs-core';
 
-import { expectTensorsClose } from '../../../../utils/test_utils';
 import { GPT2Tokenizer } from './gpt2_tokenizer';
 import { GPT2Preprocessor, PreprocessorOutputs } from './gpt2_preprocessor';
 import { tensorArrTo2DArr } from '../../utils';
@@ -57,10 +56,11 @@ describe('GPT2Preprocessor', () => {
 
     const output =
       preprocessor.callAndPackArgs(inputData, {}) as PreprocessorOutputs;
+    const outputTokenIds = tensorArrTo2DArr(output.tokenIds) as number[][];
+    const outputMask = tensorArrTo2DArr(output.paddingMask) as number[][];
 
-    expectTensorsClose(output.tokenIds[0], tensor([6, 1, 3, 4, 2, 5, 6, 0]));
-    expectTensorsClose(
-      output.paddingMask[0], tensor([1, 1, 1, 1, 1, 1, 1, 0], [8], 'bool'));
+    expect(outputTokenIds).toEqual([[6, 1, 3, 4, 2, 5, 6, 0]]);
+    expect(outputMask).toEqual([[1, 1, 1, 1, 1, 1, 1, 0]]);
   });
 
   it('no start end token', () => {
@@ -85,4 +85,5 @@ describe('GPT2Preprocessor', () => {
     expect(outputTokenIds).toEqual(expectedOutput.tokenIds);
     expect(outputMask).toEqual(expectedOutput.paddingMask);
   });
+
 });
