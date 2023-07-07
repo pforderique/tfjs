@@ -25,7 +25,7 @@ import { GPT2Tokenizer } from './gpt2_tokenizer';
 import { GPT2Preprocessor, PreprocessorOutputs } from './gpt2_preprocessor';
 import { tensorArrTo2DArr } from '../../utils';
 import { expectTensorsClose } from '../../../../utils/test_utils';
-import { deserializeKerasObject, serializeKerasObject } from 'tfjs-layers/src/utils/generic_utils';
+import { deserializeKerasObject, serializeKerasObject } from '../../../../utils/generic_utils';
 import { ConfigDict } from '@tensorflow/tfjs-core/dist/serialization';
 
 describe('GPT2Preprocessor', () => {
