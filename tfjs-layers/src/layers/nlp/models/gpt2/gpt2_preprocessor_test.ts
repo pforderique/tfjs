@@ -108,4 +108,16 @@ describe('GPT2Preprocessor', () => {
     expectTensorsClose(output[1], yIn);
     expectTensorsClose(output[2], swIn);
   });
+
+  it('sequence length override', () => {
+    const inputData = tensor(['airplane at airport']);
+
+    const output = preprocessor.callAndPackArgs(
+      inputData, {sequenceLength: 4}
+    ) as PreprocessorOutputs;
+
+    const outputTokenIds = tensorArrTo2DArr(output.tokenIds) as number[][];
+
+    expect(outputTokenIds).toEqual([[6, 1, 3, 6]]);
+  });
 });
