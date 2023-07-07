@@ -19,11 +19,12 @@
  * Unit Tests for GPT2Preprocessor.
  */
 
-import { tensor } from '@tensorflow/tfjs-core';
+import { Tensor, tensor } from '@tensorflow/tfjs-core';
 
 import { GPT2Tokenizer } from './gpt2_tokenizer';
 import { GPT2Preprocessor, PreprocessorOutputs } from './gpt2_preprocessor';
 import { tensorArrTo2DArr } from '../../utils';
+import { expectTensorsClose } from 'tfjs-layers/src/utils/test_utils';
 
 describe('GPT2Preprocessor', () => {
   let vocabulary: Map<string, number>;
@@ -47,7 +48,7 @@ describe('GPT2Preprocessor', () => {
     );
     preprocessor = new GPT2Preprocessor({
       tokenizer: new GPT2Tokenizer({vocabulary, merges}),
-      sequenceLength: 8.
+      sequenceLength: 8
     });
   });
 
@@ -64,7 +65,7 @@ describe('GPT2Preprocessor', () => {
   });
 
   it('no start end token', () => {
-    const inputData = tensor(Array<string>(2).fill('airplane at airport'));
+    const inputData = tensor(Array<string>(4).fill('airplane at airport'));
     preprocessor = new GPT2Preprocessor({
       tokenizer: new GPT2Tokenizer({vocabulary, merges}),
       sequenceLength: 8,
@@ -72,8 +73,8 @@ describe('GPT2Preprocessor', () => {
       addEndToken: false,
     });
     const expectedOutput = {
-      tokenIds: Array<number[]>(2).fill([1, 3, 4, 2, 5, 0, 0, 0]),
-      paddingMask: Array<number[]>(2).fill([1, 1, 1, 1, 1, 0, 0, 0]),
+      tokenIds: Array<number[]>(4).fill([1, 3, 4, 2, 5, 0, 0, 0]),
+      paddingMask: Array<number[]>(4).fill([1, 1, 1, 1, 1, 0, 0, 0]),
     }
 
     const output =
@@ -86,4 +87,25 @@ describe('GPT2Preprocessor', () => {
     expect(outputMask).toEqual(expectedOutput.paddingMask);
   });
 
+  it('tokenize labeled batch', () => {
+    const inputData = tensor(Array<string>(4).fill('airplane at airport'));
+    const yIn = tensor([1, 1, 1, 1]);
+    const swIn = tensor([1., 1., 1., 1.]);
+    const expectedX = {
+      tokenIds: Array<number[]>(4).fill([6, 1, 3, 4, 2, 5, 6, 0]),
+      paddingMask: Array<number[]>(4).fill([1, 1, 1, 1, 1, 1, 1, 0]),
+    };
+
+    const output = preprocessor.callAndPackArgs(
+      inputData, {y: yIn, sampleWeight: swIn}
+    ) as [PreprocessorOutputs, Tensor, Tensor];
+
+    const outputTokenIds = tensorArrTo2DArr(output[0].tokenIds) as number[][];
+    const outputMask = tensorArrTo2DArr(output[0].paddingMask) as number[][];
+
+    expect(outputTokenIds).toEqual(expectedX.tokenIds);
+    expect(outputMask).toEqual(expectedX.paddingMask);
+    expectTensorsClose(output[1], yIn);
+    expectTensorsClose(output[2], swIn);
+  });
 });
