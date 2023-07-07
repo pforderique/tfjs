@@ -16,110 +16,70 @@
  */
 
 /**
- * GPT-2 preprocessing layers.
+ * Unit Tests for GPT2Preprocessor.
  */
 
-/* Original source: keras-nlp/models/gpt2/gpt2_tokenizer.py */
-import { serialization } from '@tensorflow/tfjs-core';
+import { Tensor, tensor } from '@tensorflow/tfjs-core';
 
-import { LayerArgs } from '../../../../engine/topology';
-import { BytePairTokenizer } from '../../tokenizers';
-import { NotImplementedError, ValueError } from '../../../../errors';
+// import { expectTensorsClose } from '../../../../utils/test_utils';
+import { GPT2Tokenizer } from './gpt2_tokenizer';
+import { GPT2Preprocessor, PreprocessorOutputs } from './gpt2_preprocessor';
 
-export declare interface GPT2TokenizerArgs extends LayerArgs {
-  /**
-   * Maps token to integer ids
-   */
-  vocabulary: Map<string, number>;
+describe('GPT2Tokenizer', () => {
+  let vocabulary: Map<string, number>;
+  let merges: string[];
+  let preprocessor: GPT2Preprocessor;
 
-  /**
-   * Array. Contains the merge rule.
-   */
-  merges: string[];
-}
+  beforeEach(() => {
+    vocabulary = new Map([
+      ['!', 0],
+      ['air', 1],
+      ['Ġair', 2],
+      ['plane', 3],
+      ['Ġat', 4],
+      ['port', 5],
+      ['<|endoftext|>', 6],
+    ]);
 
-/**
- * A GPT-2 tokenizer using Byte-Pair Encoding subword segmentation.
- *
- * This tokenizer class will tokenize raw strings into integer sequences and
- * is based on `BytePairTokenizer`. Unlike the underlying tokenizer, it will
- * check for all special tokens needed by GPT-2 models and provides a
- * `fromPreset()` method to automatically download a matching vocabulary for a
- * GPT-2 preset.
- *
- * This tokenizer does not provide truncation or padding of inputs.
- *
- * When given an input of a batch of strings (`tf.Tensor`), the layer will
- * output a `tf.Tensor[]`.
- *
- * Examples:
- *
- * ```js
- * const vocabulary = new Map([
- *    ['<|endoftext|>', 0], ['butter', 1], ['fly', 2]]);
- * const merges = ['b u', 't t', 'e r', 'bu tt', 'butt er', 'f l', 'fl y'];
- * const tokenizer = new BytePairTokenizer({vocabulary, merges});
- *
- * tokenizer.tokenize(tensor(['butterfly']))[0].print();
- * tokenizer.tokenize(tensor(['butterfly, butter<|endoftext|>']))[1].print();
- *
- * tokenizer.detokenize([tensor([1, 2, 0])]).print();
- */
-export class GPT2Tokenizer extends BytePairTokenizer {
-  private readonly _endTokenId: number;
-  private readonly _startTokenId: number;
-  private readonly _padTokenId: number;
-
-  constructor(args: GPT2TokenizerArgs) {
-
-    // Special tokens.
-    const endToken = '<|endoftext|>';
-
-    super({
-      vocabulary: args.vocabulary,
-      merges: args.merges,
-      unsplittableTokens: [endToken]
+    merges = ['Ġ a', 'Ġ t', 'Ġ i', 'Ġ b', 'a i', 'p l', 'n e'].concat(
+      ['Ġa t', 'p o', 'r t', 'Ġt h', 'ai r', 'pl a', 'po rt'],
+      ['Ġai r', 'Ġa i', 'pla ne']
+    );
+    preprocessor = new GPT2Preprocessor({
+      tokenizer: new GPT2Tokenizer({vocabulary, merges}),
+      sequenceLength: 8.
     });
+  });
 
-    // Check whether special tokens are present in the vocabulary.
-    if (!this.vocabulary.includes(endToken)) {
-      throw new ValueError(
-        `Cannot find token '${endToken}' in the provided 'vocabulary'. Please` +
-        ` provide '${endToken}' in your 'vocabulary' or use a pretrained` +
-        ` 'vocabulary' name.`
-      );
+  it('tokenize', () => {
+    const inputData = tensor(['airplane at airport']);
+    const expectedOutput = {
+      tokenIds: [tensor([6, 1, 3, 4, 2, 5, 6, 0])],
+      paddingMask: [tensor([1, 1, 1, 1, 1, 1, 1, 0])],
     }
 
-    this._endTokenId = this.tokenToId(endToken);
-    this._startTokenId = this._endTokenId;
-    this._padTokenId = 0;
-  }
+    const output =
+      preprocessor.callAndPackArgs(inputData, {}) as PreprocessorOutputs;
 
-  get endTokenId() {
-    return this._endTokenId;
-  }
+    expect(output).toEqual(jasmine.objectContaining(expectedOutput));
+  });
 
-  get startTokenId() {
-    return this._startTokenId;
-  }
+  it('no start end token', () => {
+    const inputData = tensor(Array<string>(4).fill('airplane at airport'));
+    preprocessor = new GPT2Preprocessor({
+      tokenizer: new GPT2Tokenizer({vocabulary, merges}),
+      sequenceLength: 8,
+      addStartToken: false,
+      addEndToken: false,
+    });
+    const expectedOutput = {
+      tokenIds: Array<Tensor>(4).fill(tensor([1, 3, 4, 2, 5, 0, 0, 0])),
+      paddingMask: Array<Tensor>(4).fill(tensor([1, 1, 1, 1, 1, 0, 0, 0])),
+    }
 
-  get padTokenId() {
-    return this._padTokenId;
-  }
+    const output =
+      preprocessor.callAndPackArgs(inputData, {}) as PreprocessorOutputs;
 
-  static presets<T extends serialization.Serializable>(
-    cls: serialization.SerializableConstructor<T>) {
-    // TODO(orderique): Discuss best way to load a preset vocabulary.
-    throw new NotImplementedError('Not implemented yet.');
-  }
-
-  override getConfig(): serialization.ConfigDict {
-    const config = super.getConfig();
-    // In the constructor, we pass the list of special tokens to the
-    // `unsplittableTokens` arg of the superclass' constructor. Hence, we
-    // delete it from the config here.
-    delete config.unsplittableTokens;
-    return config;
-  }
-}
-serialization.registerClass(GPT2Tokenizer);
+    expect(output).toEqual(jasmine.objectContaining(expectedOutput));
+  });
+});
