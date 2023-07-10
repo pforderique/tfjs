@@ -19,11 +19,10 @@
  * Unit Tests for GPT2Preprocessor.
  */
 
-import { Tensor, tensor } from '@tensorflow/tfjs-core';
+import { Tensor, tensor, tensor2d } from '@tensorflow/tfjs-core';
 
 import { GPT2Tokenizer } from './gpt2_tokenizer';
 import { GPT2Preprocessor, PreprocessorOutputs } from './gpt2_preprocessor';
-import { tensorArrTo2DArr } from '../../utils';
 import { expectTensorsClose } from '../../../../utils/test_utils';
 
 describe('GPT2Preprocessor', () => {
@@ -57,11 +56,10 @@ describe('GPT2Preprocessor', () => {
 
     const output =
       preprocessor.callAndPackArgs(inputData, {}) as PreprocessorOutputs;
-    const outputTokenIds = tensorArrTo2DArr(output.tokenIds) as number[][];
-    const outputMask = tensorArrTo2DArr(output.paddingMask) as number[][];
 
-    expect(outputTokenIds).toEqual([[6, 1, 3, 4, 2, 5, 6, 0]]);
-    expect(outputMask).toEqual([[1, 1, 1, 1, 1, 1, 1, 0]]);
+    expectTensorsClose(output.tokenIds, tensor2d([[6, 1, 3, 4, 2, 5, 6, 0]]));
+    expectTensorsClose(
+      output.paddingMask, tensor2d([[1, 1, 1, 1, 1, 1, 1, 0]]));
   });
 
   it('no start end token', () => {
@@ -73,17 +71,15 @@ describe('GPT2Preprocessor', () => {
       addEndToken: false,
     });
     const expectedOutput = {
-      tokenIds: Array<number[]>(4).fill([1, 3, 4, 2, 5, 0, 0, 0]),
-      paddingMask: Array<number[]>(4).fill([1, 1, 1, 1, 1, 0, 0, 0]),
+      tokenIds: tensor2d(Array<number[]>(4).fill([1, 3, 4, 2, 5, 0, 0, 0])),
+      paddingMask: tensor2d(Array<number[]>(4).fill([1, 1, 1, 1, 1, 0, 0, 0])),
     }
 
     const output =
       preprocessor.callAndPackArgs(inputData, {}) as PreprocessorOutputs;
-    const outputTokenIds = tensorArrTo2DArr(output.tokenIds) as number[][];
-    const outputMask = tensorArrTo2DArr(output.paddingMask) as number[][];
 
-    expect(outputTokenIds).toEqual(expectedOutput.tokenIds);
-    expect(outputMask).toEqual(expectedOutput.paddingMask);
+    expectTensorsClose(output.tokenIds, expectedOutput.tokenIds);
+    expectTensorsClose(output.paddingMask, expectedOutput.paddingMask);
   });
 
   it('tokenize labeled batch', () => {
@@ -91,18 +87,16 @@ describe('GPT2Preprocessor', () => {
     const yIn = tensor([1, 1, 1, 1]);
     const swIn = tensor([1., 1., 1., 1.]);
     const expectedX = {
-      tokenIds: Array<number[]>(4).fill([6, 1, 3, 4, 2, 5, 6, 0]),
-      paddingMask: Array<number[]>(4).fill([1, 1, 1, 1, 1, 1, 1, 0]),
+      tokenIds: tensor2d(Array<number[]>(4).fill([6, 1, 3, 4, 2, 5, 6, 0])),
+      paddingMask: tensor2d(Array<number[]>(4).fill([1, 1, 1, 1, 1, 1, 1, 0])),
     };
 
     const output = preprocessor.callAndPackArgs(
       inputData, {y: yIn, sampleWeight: swIn}
     ) as [PreprocessorOutputs, Tensor, Tensor];
-    const outputTokenIds = tensorArrTo2DArr(output[0].tokenIds) as number[][];
-    const outputMask = tensorArrTo2DArr(output[0].paddingMask) as number[][];
 
-    expect(outputTokenIds).toEqual(expectedX.tokenIds);
-    expect(outputMask).toEqual(expectedX.paddingMask);
+    expectTensorsClose(output[0].tokenIds, expectedX.tokenIds);
+    expectTensorsClose(output[0].paddingMask, expectedX.paddingMask);
     expectTensorsClose(output[1], yIn);
     expectTensorsClose(output[2], swIn);
   });
@@ -113,8 +107,7 @@ describe('GPT2Preprocessor', () => {
     const output = preprocessor.callAndPackArgs(
       inputData, {sequenceLength: 4}
     ) as PreprocessorOutputs;
-    const outputTokenIds = tensorArrTo2DArr(output.tokenIds) as number[][];
 
-    expect(outputTokenIds).toEqual([[6, 1, 3, 6]]);
+    expectTensorsClose(output.tokenIds, tensor2d([[6, 1, 3, 6]]));
   });
 });
