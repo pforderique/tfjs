@@ -19,7 +19,7 @@
  * Unit Tests for StartEndPacker Layer.
  */
 
-import { Tensor, tensor } from '@tensorflow/tfjs-core';
+import { Tensor1D, Tensor2D, memory, tensor, tensor2d } from '@tensorflow/tfjs-core';
 
 import { StartEndPacker } from './start_end_packer';
 import { expectTensorsClose } from '../../../utils/test_utils';
@@ -30,7 +30,7 @@ describe('StartEndPacker', () => {
     const inputData = tensor([5, 6, 7]);
     const startEndPacker = new StartEndPacker({sequenceLength: 5});
 
-    const output = startEndPacker.call(inputData) as Tensor;
+    const output = startEndPacker.call(inputData) as Tensor1D;
     const expectedOutput = tensor([5, 6, 7, 0, 0]);
 
     expectTensorsClose(output, expectedOutput);
@@ -40,35 +40,30 @@ describe('StartEndPacker', () => {
     const inputData = [tensor([5, 6, 7])];
     const startEndPacker = new StartEndPacker({sequenceLength: 5});
 
-    const output = startEndPacker.call(inputData) as Tensor[];
-    const expectedOutput = [tensor([5, 6, 7, 0, 0])];
+    const output = startEndPacker.call(inputData) as Tensor2D;
+    const expectedOutput = tensor2d([[5, 6, 7, 0, 0]]);
 
-    expect(output.length).toBe(1);
-    expectTensorsClose(output[0], expectedOutput[0]);
+    expectTensorsClose(output, expectedOutput);
   });
 
   it('uneven tensor array input', () => {
     const inputData = [tensor([5, 6, 7]), tensor([8, 9, 10, 11])];
     const startEndPacker = new StartEndPacker({sequenceLength: 5});
 
-    const output = startEndPacker.call(inputData) as Tensor[];
-    const expectedOutput = [tensor([5, 6, 7, 0, 0]), tensor([8, 9, 10, 11, 0])];
+    const output = startEndPacker.call(inputData) as Tensor2D;
+    const expectedOutput = tensor2d([[5, 6, 7, 0, 0], [8, 9, 10, 11, 0]]);
 
-    expect(output.length).toBe(2);
-    expectTensorsClose(output[0], expectedOutput[0]);
-    expectTensorsClose(output[1], expectedOutput[1]);
+    expectTensorsClose(output, expectedOutput);
   });
 
   it('tensor array truncation', () => {
     const inputData = [tensor([5, 6, 7]), tensor([8, 9, 10, 11])];
     const startEndPacker = new StartEndPacker({sequenceLength: 3});
 
-    const output = startEndPacker.call(inputData) as Tensor[];
-    const expectedOutput = [tensor([5, 6, 7]), tensor([8, 9, 10])];
+    const output = startEndPacker.call(inputData) as Tensor2D;
+    const expectedOutput = tensor2d([[5, 6, 7], [8, 9, 10]]);
 
-    expect(output.length).toBe(2);
-    expectTensorsClose(output[0], expectedOutput[0]);
-    expectTensorsClose(output[1], expectedOutput[1]);
+    expectTensorsClose(output, expectedOutput);
   });
 
   it('tensor array input error', () => {
@@ -80,20 +75,28 @@ describe('StartEndPacker', () => {
         'Input must either be a rank 1 Tensor or an array of rank 1 Tensors.'));
   });
 
+  it('start only', () => {
+    const inputData = [tensor([5, 6, 7]), tensor([8, 9, 10, 11])];
+    const startEndPacker = new StartEndPacker({
+      sequenceLength: 3, startValue: -1
+    });
+
+    const output = startEndPacker.call(inputData) as Tensor2D;
+    const expectedOutput = tensor2d([[-1, 5, 6], [-1, 8, 9]]);
+
+    expectTensorsClose(output, expectedOutput);
+  });
+
   it('start end token', () => {
     const inputData = [tensor([5, 6, 7]), tensor([8, 9, 10, 11])];
     const startEndPacker = new StartEndPacker({
       sequenceLength: 6, startValue: 1, endValue: 2,
     });
 
-    const output = startEndPacker.call(inputData) as Tensor[];
-    const expectedOutput = [
-      tensor([1, 5, 6, 7, 2, 0]), tensor([1, 8, 9, 10, 11, 2])
-    ];
+    const output = startEndPacker.call(inputData) as Tensor2D;
+    const expectedOutput = tensor2d([[1, 5, 6, 7, 2, 0], [1, 8, 9, 10, 11, 2]]);
 
-    expect(output.length).toBe(2);
-    expectTensorsClose(output[0], expectedOutput[0]);
-    expectTensorsClose(output[1], expectedOutput[1]);
+    expectTensorsClose(output, expectedOutput);
   });
 
   it('start end and padding', () => {
@@ -102,14 +105,13 @@ describe('StartEndPacker', () => {
       sequenceLength: 7, startValue: 1, endValue: 2, padValue: 3,
     });
 
-    const output = startEndPacker.call(inputData) as Tensor[];
-    const expectedOutput = [
-      tensor([1, 5, 6, 7, 2, 3, 3]), tensor([1, 8, 9, 10, 11, 2, 3])
-    ];
+    const output = startEndPacker.call(inputData) as Tensor2D;
+    const expectedOutput = tensor2d([
+      [1, 5, 6, 7, 2, 3, 3],
+      [1, 8, 9, 10, 11, 2, 3],
+    ]);
 
-    expect(output.length).toBe(2);
-    expectTensorsClose(output[0], expectedOutput[0]);
-    expectTensorsClose(output[1], expectedOutput[1]);
+    expectTensorsClose(output, expectedOutput);
   });
 
   it('end token value during truncation', () => {
@@ -118,12 +120,10 @@ describe('StartEndPacker', () => {
       sequenceLength: 5, startValue: 1, endValue: 2, padValue: 0,
     });
 
-    const output = startEndPacker.call(inputData) as Tensor[];
-    const expectedOutput = [tensor([1, 5, 6, 2, 0]), tensor([1, 8, 9, 10, 2])];
+    const output = startEndPacker.call(inputData) as Tensor2D;
+    const expectedOutput = tensor2d([[1, 5, 6, 2, 0], [1, 8, 9, 10, 2]]);
 
-    expect(output.length).toBe(2);
-    expectTensorsClose(output[0], expectedOutput[0]);
-    expectTensorsClose(output[1], expectedOutput[1]);
+    expectTensorsClose(output, expectedOutput);
   });
 
   it('string input', () => {
@@ -138,15 +138,13 @@ describe('StartEndPacker', () => {
       padValue: '[PAD]',
     });
 
-    const output = startEndPacker.call(inputData) as Tensor[];
-    const expectedOutput = [
-      tensor(['[START]', 'TensorflowJS', 'is', 'awesome', '[END]']),
-      tensor(['[START]', 'amazing', '[END]', '[PAD]', '[PAD]']),
-    ];
+    const output = startEndPacker.call(inputData) as Tensor2D;
+    const expectedOutput = tensor2d([
+      ['[START]', 'TensorflowJS', 'is', 'awesome', '[END]'],
+      ['[START]', 'amazing', '[END]', '[PAD]', '[PAD]'],
+    ]);
 
-    expect(output.length).toBe(2);
-    expectTensorsClose(output[0], expectedOutput[0]);
-    expectTensorsClose(output[1], expectedOutput[1]);
+    expectTensorsClose(output, expectedOutput);
   });
 
   it('correct mask', () => {
@@ -156,15 +154,26 @@ describe('StartEndPacker', () => {
     });
 
     const outputMask =
-      startEndPacker.callAndReturnPaddingMask(inputData)[1] as Tensor[];
-    const expectedMask = [
-      tensor([true, true, true, true, false, false]),
-      tensor([true, true, true, true, true, true]),
-    ];
+      startEndPacker.callAndReturnPaddingMask(inputData)[1] as Tensor2D;
+    const expectedMask = tensor2d([
+      [true, true, true, true, false, false],
+      [true, true, true, true, true, true],
+    ]);
 
-    expect(outputMask.length).toBe(2);
-    expectTensorsClose(outputMask[0], expectedMask[0]);
-    expectTensorsClose(outputMask[1], expectedMask[1]);
+    expectTensorsClose(outputMask, expectedMask);
+  });
+
+  it('does not leak memory', () => {
+    const inputData = [tensor([5, 6]), tensor([8, 9, 10, 11])];
+    const startEndPacker = new StartEndPacker({
+      sequenceLength: 6, startValue: 1, endValue: 2
+    });
+
+    const numTensorsBefore = memory().numTensors;
+    startEndPacker.callAndReturnPaddingMask(inputData);
+    const numTensorsAfter = memory().numTensors;
+
+    expect(numTensorsAfter).toEqual(numTensorsBefore + 2);
   });
 
   it('correct getConfig', () => {
