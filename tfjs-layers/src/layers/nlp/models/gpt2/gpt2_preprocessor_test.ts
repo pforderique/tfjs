@@ -59,7 +59,7 @@ describe('GPT2Preprocessor', () => {
 
     expectTensorsClose(output.tokenIds, tensor2d([[6, 1, 3, 4, 2, 5, 6, 0]]));
     expectTensorsClose(
-      output.paddingMask, tensor2d([[1, 1, 1, 1, 1, 1, 1, 0]]));
+      output.paddingMask, tensor2d([[1, 1, 1, 1, 1, 1, 1, 0]], [1, 8], 'bool'));
   });
 
   it('no start end token', () => {
@@ -72,7 +72,8 @@ describe('GPT2Preprocessor', () => {
     });
     const expectedOutput = {
       tokenIds: tensor2d(Array<number[]>(4).fill([1, 3, 4, 2, 5, 0, 0, 0])),
-      paddingMask: tensor2d(Array<number[]>(4).fill([1, 1, 1, 1, 1, 0, 0, 0])),
+      paddingMask: tensor2d(
+        Array<number[]>(4).fill([1, 1, 1, 1, 1, 0, 0, 0]), [4, 8], 'bool'),
     }
 
     const output =
@@ -88,7 +89,8 @@ describe('GPT2Preprocessor', () => {
     const swIn = tensor([1., 1., 1., 1.]);
     const expectedX = {
       tokenIds: tensor2d(Array<number[]>(4).fill([6, 1, 3, 4, 2, 5, 6, 0])),
-      paddingMask: tensor2d(Array<number[]>(4).fill([1, 1, 1, 1, 1, 1, 1, 0])),
+      paddingMask: tensor2d(
+        Array<number[]>(4).fill([1, 1, 1, 1, 1, 1, 1, 0]), [4, 8], 'bool'),
     };
 
     const output = preprocessor.callAndPackArgs(
