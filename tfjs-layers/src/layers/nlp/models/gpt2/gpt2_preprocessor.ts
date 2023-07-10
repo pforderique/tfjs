@@ -20,7 +20,7 @@
  */
 
 /* Original source: keras-nlp/models/gpt2/gpt2_preprocessor.py */
-import { Tensor, serialization } from '@tensorflow/tfjs-core';
+import { Tensor, Tensor2D, serialization } from '@tensorflow/tfjs-core';
 
 import { LayerArgs } from '../../../../engine/topology';
 import { Preprocessor } from '../preprocessor';
@@ -73,8 +73,8 @@ export declare interface GPT2PreprocessorOptions {
 }
 
 export declare interface PreprocessorOutputs {
-  tokenIds: Tensor[],
-  paddingMask: Tensor[]
+  tokenIds: Tensor2D,
+  paddingMask: Tensor2D
 }
 
 function packXYSampleWeight(
@@ -193,8 +193,8 @@ export class GPT2Preprocessor extends Preprocessor {
     );
 
     return {
-      tokenIds: tokenIds as Tensor[],
-      paddingMask: paddingMask as Tensor[]
+      tokenIds: tokenIds as Tensor2D,
+      paddingMask: paddingMask as Tensor2D
     };
   }
 
