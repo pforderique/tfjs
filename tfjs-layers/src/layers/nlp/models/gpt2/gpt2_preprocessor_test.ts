@@ -24,6 +24,7 @@ import { Tensor, tensor, tensor2d } from '@tensorflow/tfjs-core';
 import { GPT2Tokenizer } from './gpt2_tokenizer';
 import { GPT2Preprocessor, PreprocessorOutputs } from './gpt2_preprocessor';
 import { expectTensorsClose } from '../../../../utils/test_utils';
+// import { ConfigDict } from '@tensorflow/tfjs-core/dist/serialization';
 
 describe('GPT2Preprocessor', () => {
   let vocabulary: Map<string, number>;
@@ -111,5 +112,13 @@ describe('GPT2Preprocessor', () => {
     ) as PreprocessorOutputs;
 
     expectTensorsClose(output.tokenIds, tensor2d([[6, 1, 3, 6]]));
+  });
+
+  it('serialization round-trip with set tokenizer', () => {
+    // console.log('CONFIG', ((preprocessor.getConfig()['tokenizer'] as ConfigDict)['config'] as ConfigDict)['vocabulary']);
+    const reserialized = GPT2Preprocessor.fromConfig(
+      GPT2Preprocessor, preprocessor.getConfig());
+    // console.log('CONFIG', ((reserialized.getConfig()['tokenizer'] as ConfigDict)['config'] as ConfigDict)['vocabulary']);
+    expect(reserialized.getConfig()).toEqual(preprocessor.getConfig());
   });
 });
