@@ -48,7 +48,8 @@ describe('GPT2Preprocessor', () => {
     );
     preprocessor = new GPT2Preprocessor({
       tokenizer: new GPT2Tokenizer({vocabulary, merges}),
-      sequenceLength: 8
+      sequenceLength: 8,
+      name: 'GPT2Tokenizer'
     });
   });
 
