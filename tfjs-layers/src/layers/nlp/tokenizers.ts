@@ -232,7 +232,7 @@ export declare interface BytePairTokenizerArgs extends LayerArgs {
  */
 export class BytePairTokenizer extends Tokenizer {
   /** @nocollapse */
-  static readonly className = 'BytePairTokenizer';
+  static readonly className: string = 'BytePairTokenizer';
 
   private _vocabulary: Map<string, number>;
   private merges: string[];
