@@ -20,16 +20,18 @@
  */
 
 /* Original source: keras/layers/core/einsum_dense.py */
-import { Tensor, Tensor2D, serialization } from '@tensorflow/tfjs-core';
+import { Tensor, Tensor2D, einsum, serialization } from '@tensorflow/tfjs-core';
 
-import { ConstraintIdentifier } from '../../constraints';
+import { Activation, getActivation, serializeActivation } from '../../activations';
+import { Constraint, ConstraintIdentifier, getConstraint, serializeConstraint } from '../../constraints';
 import { Layer, LayerArgs } from '../../engine/topology';
-import { NotImplementedError } from '../../errors';
-import { InitializerIdentifier } from '../../initializers';
+import { ValueError } from '../../errors';
+import { Initializer, InitializerIdentifier, getInitializer, serializeInitializer } from '../../initializers';
 import { ActivationIdentifier } from '../../keras_format/activation_config';
 import { Shape } from '../../keras_format/common';
-import { RegularizerIdentifier } from '../../regularizers';
+import { Regularizer, RegularizerIdentifier, getRegularizer, serializeRegularizer } from '../../regularizers';
 import { Kwargs } from '../../types';
+import { LayerVariable } from '../../variables';
 
 export declare interface EinsumDenseArgs extends LayerArgs {
   /**
@@ -45,7 +47,7 @@ export declare interface EinsumDenseArgs extends LayerArgs {
    * any dimensions represented by ellipses). You can specify None for any
    * dimension that is unknown or can be inferred from the input shape.
    */
-  outputShape: Shape;
+  outputShape: Shape|number;
 
   /**
    * Activation function to use. If you don't specify anything, no activation
@@ -170,23 +172,101 @@ export declare interface EinsumDenseOptions {
 export class EinsumDense extends Layer {
   /** @nocollapse */
   static readonly className = 'EinsumDense';
+  private readonly equation: string;
+  private readonly biasAxes: string;
+  private readonly partialOutputShape: Shape;
+  private readonly activation: Activation;
+  private readonly kernelInitializer: Initializer;
+  private readonly biasInitializer: Initializer;
+  private readonly kernelRegularizer: Regularizer;
+  private readonly biasRegularizer: Regularizer;
+  private readonly kernelConstraint: Constraint;
+  private readonly biasConstraint: Constraint;
+  private fullOutputShape: Shape;
+  private kernel: LayerVariable;
+  private bias: LayerVariable;
 
   constructor(args: EinsumDenseArgs) {
     super(args);
-    throw new NotImplementedError(`Not implmented yet.`);
+    this.equation = args.equation;
+    this.biasAxes = args.biasAxes;
+    this.partialOutputShape =
+      Array.isArray(args.outputShape) ? args.outputShape : [args.outputShape];
+    this.activation = getActivation(args.activation);
+    this.kernelInitializer = getInitializer(args.kernelInitializer);
+    this.biasInitializer = getInitializer(args.biasInitializer);
+    this.kernelRegularizer = getRegularizer(args.kernelRegularizer);
+    this.biasRegularizer = getRegularizer(args.biasRegularizer);
+    this.kernelConstraint = getConstraint(args.kernelConstraint);
+    this.biasConstraint = getConstraint(args.biasConstraint);
   }
 
-  override build(inputShape: Shape | Shape[]): void {
-    throw new NotImplementedError(
-      `Not implmented yet. Uses ${this.analyzeEinsumString}`);
+  override build(inputShape: Shape): void {
+    const [kernelShape, biasShape, fullOutputShape] = this.analyzeEinsumString(
+      this.equation,
+      this.biasAxes,
+      inputShape,
+      this.partialOutputShape
+    );
+    this.fullOutputShape = fullOutputShape;
+    this.kernel = this.addWeight(
+      'kernel',
+      kernelShape,
+      this.dtype,
+      this.kernelInitializer,
+      this.kernelRegularizer,
+      true,
+      this.kernelConstraint,
+    );
+
+    if (biasShape !== null) {
+      this.bias = this.addWeight(
+        'bias',
+        biasShape,
+        this.dtype,
+        this.biasInitializer,
+        this.biasRegularizer,
+        true,
+        this.biasConstraint,
+      );
+    } else {
+      this.bias = null;
+    }
+    super.build(inputShape);
+  }
+
+  override computeOutputShape(_: Shape): Shape {
+    return this.fullOutputShape;
   }
 
   override getConfig(): serialization.ConfigDict {
-    throw new NotImplementedError(`Not implmented yet.`);
+    const config = {
+      outputShape: this.partialOutputShape,
+      equation: this.equation,
+      activation: serializeActivation(this.activation),
+      biasAxes: this.biasAxes,
+      kernelInitializer: serializeInitializer(this.kernelInitializer),
+      biasInitializer: serializeInitializer(this.biasInitializer),
+      kernelRegularizer: serializeRegularizer(this.kernelRegularizer),
+      biasRegularizer: serializeRegularizer(this.biasRegularizer),
+      kernelConstraint: serializeConstraint(this.kernelConstraint),
+      biasConstraint: serializeConstraint(this.biasConstraint),
+    };
+    const baseConfig = super.getConfig();
+    Object.assign(config, baseConfig);
+    return config;
   }
 
   override call(inputs: Tensor|Tensor[], kwargs: Kwargs): Tensor|Tensor2D {
-    throw new NotImplementedError(`Not implmented yet.`);
+    inputs = Array.isArray(inputs) ? inputs : [inputs];
+    let ret = einsum(this.equation, ...inputs, this.kernel.read());
+    if (this.bias != null) {
+      ret = ret.add(this.bias.read());
+    }
+    if (this.activation != null) {
+      ret = this.activation.apply(ret);
+    }
+    return ret;
   }
 
   /**
@@ -198,21 +278,167 @@ export class EinsumDense extends Layer {
     inputShape: Shape,
     outputShape: Shape
   ): [Shape, Shape, Shape] {
-    throw new NotImplementedError(
-      `Not implmented yet. Uses ${this.analyzeSplitString}.`);
+    const dotReplacedString = equation.replace(/\.\.\./g, "0");
+
+    // This is the case where no ellipses are present in the string.
+    let splitString =
+      dotReplacedString.match(/([a-zA-Z]+),([a-zA-Z]+)->([a-zA-Z]+)/);
+    if (splitString) {
+      return this.analyzeSplitString(
+        splitString, biasAxes, inputShape, outputShape);
+    }
+
+    // This is the case where ellipses are present on the left.
+    splitString =
+      dotReplacedString.match(/0([a-zA-Z]+),([a-zA-Z]+)->0([a-zA-Z]+)/);
+    if (splitString) {
+      return this.analyzeSplitString(
+        splitString, biasAxes, inputShape, outputShape, true);
+    }
+
+    // This is the case where ellipses are present on the right.
+    splitString =
+      dotReplacedString.match(/([a-zA-Z]{2,})0,([a-zA-Z]+)->([a-zA-Z]+)0/);
+    if (splitString) {
+      return this.analyzeSplitString(
+        splitString, biasAxes, inputShape, outputShape);
+    }
+
+    throw new ValueError(
+      `Invalid einsum equation '${equation}'. Equations must be in the form ` +
+      '[X],[Y]->[Z], ...[X],[Y]->...[Z], or [X]...,[Y]->[Z]....'
+    );
   }
 
   /**
    * Analyze an pre-split einsum string to find the weight shape.
    */
   private analyzeSplitString(
-    splitString: [string, string, string],
+    splitString: RegExpMatchArray,
     biasAxes: string,
     inputShape: Shape,
-    outputShape: Shape,
+    outputShape: Shape|number,
     leftElided?: boolean
   ): [Shape, Shape, Shape] {
-    throw new NotImplementedError(`Not implmented yet.`);
+    const inputSpec = splitString[1];
+    const weightSpec = splitString[2];
+    let outputSpec = splitString[3];
+    const elided = inputShape.length - inputSpec.length;
+
+    outputShape = Array.isArray(outputShape) ? outputShape : [outputShape];
+    outputShape.unshift(inputShape[0]);
+
+    if (elided > 0 && leftElided) {
+      for(let i = 0; i < elided; i++) {
+        // We already inserted the 0th input dimension at dim 0, so we need
+        // to start at location 1 here.
+        outputShape.push(1, inputShape[i]);
+      }
+    } else if (elided > 0 && !leftElided) {
+      for(let i = inputShape.length - elided; i < inputShape.length; i++) {
+        outputShape.push(inputShape[i]);
+      }
+    }
+
+    const inputSpecArr = Array.from(inputSpec);
+    const outputSpecArr = Array.from(outputSpec);
+    let inputDimMap, outputDimMap;
+
+    if (leftElided) {
+      // If we have beginning dimensions elided, we need to use negative
+      // indexing to determine where in the input dimension our values are.
+      inputDimMap = new Map<string, number>(
+        inputSpecArr.map((dim, i) => [dim, i + elided - inputShape.length])
+      );
+
+      // Because we've constructed the full output shape already, we don't need
+      // to do negative indexing.
+      outputDimMap = new Map<string, number>(
+        outputSpecArr.map((dim, i) => [dim, i + elided])
+      );
+    } else {
+      inputDimMap = new Map<string, number>(
+        inputSpecArr.map((dim, i) => [dim, i])
+      );
+      outputDimMap = new Map<string, number>(
+        outputSpecArr.map((dim, i) => [dim, i])
+      );
+    }
+
+    for (const dim of inputSpec) {
+      const inputShapeAtDim = inputShape[inputDimMap.get(dim)];
+      if (outputDimMap.has(dim)) {
+        const outputShapeAtDim = outputShape[outputDimMap.get(dim)];
+        if (outputShapeAtDim !== null && outputShapeAtDim !== inputShapeAtDim) {
+          throw new ValueError(
+            `Input shape and output shape do not match at shared dimension `+
+            `'${dim}'. Input shape is ${inputShapeAtDim}, and output shape ` +
+            `is ${outputShapeAtDim}.`
+          );
+        }
+      }
+    }
+
+    for (const dim of outputSpec) {
+      if (!inputSpec.includes(dim) && !weightSpec.includes(dim)) {
+        throw new ValueError(
+          `Dimension '${dim}' was specified in the output '${outputSpec}' ` +
+          `but has no corresponding dimension in the input spec ` +
+          `'${inputSpec}' or weight spec '${weightSpec}'`
+        );
+      }
+    }
+
+    const weightShape: number[] = [];
+    for (const dim of weightSpec) {
+      if (inputDimMap.has(dim)) {
+        weightShape.push(inputShape[inputDimMap.get(dim)]);
+      } else if (outputDimMap.has(dim)) {
+        weightShape.push(outputShape[outputDimMap.get(dim)]);
+      } else {
+        throw new ValueError(
+          `Weight dimension '${dim}' did not have a match in either the ` +
+          `input spec '${inputSpec}' or the output spec '${outputSpec}'. For ` +
+          `this layer, the weight must be fully specified.`
+        );
+      }
+    }
+
+    let biasShape: number[] | null = null;
+    if (biasAxes != null) {
+      const numLeftElided = leftElided ? elided : 0;
+      const idxMap: { [char: string]: number } = {};
+      for (let i = 0; i < outputSpec.length; i++) {
+        idxMap[outputSpec[i]] = outputShape[i + numLeftElided];
+      }
+
+      for (const char of biasAxes) {
+        if (!outputSpec.includes(char)) {
+          throw new ValueError(
+            `Bias dimension '${char}' was requested, but is not part of the ` +
+            `output spec '${outputSpec}'`
+          );
+        }
+      }
+
+      const firstBiasLocation = Math.min(
+        ...biasAxes.split('').map(char => outputSpec.indexOf(char))
+      );
+      const biasOutputSpec = outputSpec.slice(firstBiasLocation);
+
+      biasShape = biasOutputSpec.split('').map(char =>
+        biasAxes.includes(char) ? idxMap[char] : 1
+      );
+
+      if (!leftElided) {
+        for (let _ = 0; _ < elided; _++) {
+          biasShape.push(1);
+        }
+      }
+    } else {
+      biasShape = null;
+    }
+    return [weightShape as Shape, weightShape as Shape, biasShape as Shape];
   }
 }
 serialization.registerClass(EinsumDense);
