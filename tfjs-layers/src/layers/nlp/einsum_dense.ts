@@ -33,6 +33,178 @@ import { Regularizer, RegularizerIdentifier, getRegularizer, serializeRegularize
 import { Kwargs } from '../../types';
 import { LayerVariable } from '../../variables';
 
+/**
+ * Analyzes an einsum string to determine the required weight shape.
+ */
+export function analyzeEinsumString(
+  equation: string,
+  biasAxes: string,
+  inputShape: Shape,
+  outputShape: Shape
+): [Shape, Shape, Shape] {
+  const dotReplacedString = equation.replace(/\.\.\./g, "0");
+
+  // This is the case where no ellipses are present in the string.
+  let splitString =
+    dotReplacedString.match(/([a-zA-Z]+),([a-zA-Z]+)->([a-zA-Z]+)/);
+  if (splitString) {
+    return analyzeSplitString(
+      splitString, biasAxes, inputShape, outputShape);
+  }
+
+  // This is the case where ellipses are present on the left.
+  splitString =
+    dotReplacedString.match(/0([a-zA-Z]+),([a-zA-Z]+)->0([a-zA-Z]+)/);
+  if (splitString) {
+    return analyzeSplitString(
+      splitString, biasAxes, inputShape, outputShape, true);
+  }
+
+  // This is the case where ellipses are present on the right.
+  splitString =
+    dotReplacedString.match(/([a-zA-Z]{2,})0,([a-zA-Z]+)->([a-zA-Z]+)0/);
+  if (splitString) {
+    return analyzeSplitString(
+      splitString, biasAxes, inputShape, outputShape);
+  }
+
+  throw new ValueError(
+    `Invalid einsum equation '${equation}'. Equations must be in the form ` +
+    '[X],[Y]->[Z], ...[X],[Y]->...[Z], or [X]...,[Y]->[Z]....'
+  );
+}
+
+/**
+ * Analyze an pre-split einsum string to find the weight shape.
+ */
+export function analyzeSplitString(
+  splitString: RegExpMatchArray,
+  biasAxes: string,
+  inputShape: Shape,
+  outputShape: Shape|number,
+  leftElided?: boolean
+): [Shape, Shape, Shape] {
+  const inputSpec = splitString[1];
+  const weightSpec = splitString[2];
+  let outputSpec = splitString[3];
+  const elided = inputShape.length - inputSpec.length;
+
+  outputShape = Array.isArray(outputShape) ? outputShape : [outputShape];
+  outputShape.unshift(inputShape[0]);
+
+  if (elided > 0 && leftElided) {
+    for(let i = 0; i < elided; i++) {
+      // We already inserted the 0th input dimension at dim 0, so we need
+      // to start at location 1 here.
+      outputShape.push(1, inputShape[i]);
+    }
+  } else if (elided > 0 && !leftElided) {
+    for(let i = inputShape.length - elided; i < inputShape.length; i++) {
+      outputShape.push(inputShape[i]);
+    }
+  }
+
+  const inputSpecArr = Array.from(inputSpec);
+  const outputSpecArr = Array.from(outputSpec);
+  let inputDimMap, outputDimMap;
+
+  if (leftElided) {
+    // If we have beginning dimensions elided, we need to use negative
+    // indexing to determine where in the input dimension our values are.
+    inputDimMap = new Map<string, number>(
+      inputSpecArr.map((dim, i) => [dim, i + elided - inputShape.length])
+    );
+
+    // Because we've constructed the full output shape already, we don't need
+    // to do negative indexing.
+    outputDimMap = new Map<string, number>(
+      outputSpecArr.map((dim, i) => [dim, i + elided])
+    );
+  } else {
+    inputDimMap = new Map<string, number>(
+      inputSpecArr.map((dim, i) => [dim, i])
+    );
+    outputDimMap = new Map<string, number>(
+      outputSpecArr.map((dim, i) => [dim, i])
+    );
+  }
+
+  for (const dim of inputSpec) {
+    const inputShapeAtDim = inputShape[inputDimMap.get(dim)];
+    if (outputDimMap.has(dim)) {
+      const outputShapeAtDim = outputShape[outputDimMap.get(dim)];
+      if (outputShapeAtDim !== null && outputShapeAtDim !== inputShapeAtDim) {
+        throw new ValueError(
+          `Input shape and output shape do not match at shared dimension `+
+          `'${dim}'. Input shape is ${inputShapeAtDim}, and output shape ` +
+          `is ${outputShapeAtDim}.`
+        );
+      }
+    }
+  }
+
+  for (const dim of outputSpec) {
+    if (!inputSpec.includes(dim) && !weightSpec.includes(dim)) {
+      throw new ValueError(
+        `Dimension '${dim}' was specified in the output '${outputSpec}' ` +
+        `but has no corresponding dimension in the input spec ` +
+        `'${inputSpec}' or weight spec '${weightSpec}'`
+      );
+    }
+  }
+
+  const weightShape: number[] = [];
+  for (const dim of weightSpec) {
+    if (inputDimMap.has(dim)) {
+      weightShape.push(inputShape[inputDimMap.get(dim)]);
+    } else if (outputDimMap.has(dim)) {
+      weightShape.push(outputShape[outputDimMap.get(dim)]);
+    } else {
+      throw new ValueError(
+        `Weight dimension '${dim}' did not have a match in either the ` +
+        `input spec '${inputSpec}' or the output spec '${outputSpec}'. For ` +
+        `this layer, the weight must be fully specified.`
+      );
+    }
+  }
+
+  let biasShape: number[] | null = null;
+  if (biasAxes != null) {
+    const numLeftElided = leftElided ? elided : 0;
+    const idxMap: { [char: string]: number } = {};
+    for (let i = 0; i < outputSpec.length; i++) {
+      idxMap[outputSpec[i]] = outputShape[i + numLeftElided];
+    }
+
+    for (const char of biasAxes) {
+      if (!outputSpec.includes(char)) {
+        throw new ValueError(
+          `Bias dimension '${char}' was requested, but is not part of the ` +
+          `output spec '${outputSpec}'`
+        );
+      }
+    }
+
+    const firstBiasLocation = Math.min(
+      ...biasAxes.split('').map(char => outputSpec.indexOf(char))
+    );
+    const biasOutputSpec = outputSpec.slice(firstBiasLocation);
+
+    biasShape = biasOutputSpec.split('').map(char =>
+      biasAxes.includes(char) ? idxMap[char] : 1
+    );
+
+    if (!leftElided) {
+      for (let _ = 0; _ < elided; _++) {
+        biasShape.push(1);
+      }
+    }
+  } else {
+    biasShape = null;
+  }
+  return [weightShape as Shape, weightShape as Shape, biasShape as Shape];
+}
+
 export declare interface EinsumDenseArgs extends LayerArgs {
   /**
    * An equation describing the einsum to perform. This equation must be a
@@ -183,8 +355,8 @@ export class EinsumDense extends Layer {
   private readonly kernelConstraint: Constraint;
   private readonly biasConstraint: Constraint;
   private fullOutputShape: Shape;
-  private kernel: LayerVariable;
-  private bias: LayerVariable;
+  _kernel: LayerVariable;
+  _bias: LayerVariable;
 
   constructor(args: EinsumDenseArgs) {
     super(args);
@@ -201,15 +373,23 @@ export class EinsumDense extends Layer {
     this.biasConstraint = getConstraint(args.biasConstraint);
   }
 
+  get kernel(): LayerVariable {
+    return this._kernel;
+  }
+
+  get bias(): LayerVariable {
+    return this._bias;
+  }
+
   override build(inputShape: Shape): void {
-    const [kernelShape, biasShape, fullOutputShape] = this.analyzeEinsumString(
+    const [kernelShape, biasShape, fullOutputShape] = analyzeEinsumString(
       this.equation,
       this.biasAxes,
       inputShape,
       this.partialOutputShape
     );
     this.fullOutputShape = fullOutputShape;
-    this.kernel = this.addWeight(
+    this._kernel = this.addWeight(
       'kernel',
       kernelShape,
       this.dtype,
@@ -220,7 +400,7 @@ export class EinsumDense extends Layer {
     );
 
     if (biasShape !== null) {
-      this.bias = this.addWeight(
+      this._bias = this.addWeight(
         'bias',
         biasShape,
         this.dtype,
@@ -230,7 +410,7 @@ export class EinsumDense extends Layer {
         this.biasConstraint,
       );
     } else {
-      this.bias = null;
+      this._bias = null;
     }
     super.build(inputShape);
   }
@@ -267,178 +447,6 @@ export class EinsumDense extends Layer {
       ret = this.activation.apply(ret);
     }
     return ret;
-  }
-
-  /**
-   * Analyzes an einsum string to determine the required weight shape.
-   */
-  private analyzeEinsumString(
-    equation: string,
-    biasAxes: string,
-    inputShape: Shape,
-    outputShape: Shape
-  ): [Shape, Shape, Shape] {
-    const dotReplacedString = equation.replace(/\.\.\./g, "0");
-
-    // This is the case where no ellipses are present in the string.
-    let splitString =
-      dotReplacedString.match(/([a-zA-Z]+),([a-zA-Z]+)->([a-zA-Z]+)/);
-    if (splitString) {
-      return this.analyzeSplitString(
-        splitString, biasAxes, inputShape, outputShape);
-    }
-
-    // This is the case where ellipses are present on the left.
-    splitString =
-      dotReplacedString.match(/0([a-zA-Z]+),([a-zA-Z]+)->0([a-zA-Z]+)/);
-    if (splitString) {
-      return this.analyzeSplitString(
-        splitString, biasAxes, inputShape, outputShape, true);
-    }
-
-    // This is the case where ellipses are present on the right.
-    splitString =
-      dotReplacedString.match(/([a-zA-Z]{2,})0,([a-zA-Z]+)->([a-zA-Z]+)0/);
-    if (splitString) {
-      return this.analyzeSplitString(
-        splitString, biasAxes, inputShape, outputShape);
-    }
-
-    throw new ValueError(
-      `Invalid einsum equation '${equation}'. Equations must be in the form ` +
-      '[X],[Y]->[Z], ...[X],[Y]->...[Z], or [X]...,[Y]->[Z]....'
-    );
-  }
-
-  /**
-   * Analyze an pre-split einsum string to find the weight shape.
-   */
-  private analyzeSplitString(
-    splitString: RegExpMatchArray,
-    biasAxes: string,
-    inputShape: Shape,
-    outputShape: Shape|number,
-    leftElided?: boolean
-  ): [Shape, Shape, Shape] {
-    const inputSpec = splitString[1];
-    const weightSpec = splitString[2];
-    let outputSpec = splitString[3];
-    const elided = inputShape.length - inputSpec.length;
-
-    outputShape = Array.isArray(outputShape) ? outputShape : [outputShape];
-    outputShape.unshift(inputShape[0]);
-
-    if (elided > 0 && leftElided) {
-      for(let i = 0; i < elided; i++) {
-        // We already inserted the 0th input dimension at dim 0, so we need
-        // to start at location 1 here.
-        outputShape.push(1, inputShape[i]);
-      }
-    } else if (elided > 0 && !leftElided) {
-      for(let i = inputShape.length - elided; i < inputShape.length; i++) {
-        outputShape.push(inputShape[i]);
-      }
-    }
-
-    const inputSpecArr = Array.from(inputSpec);
-    const outputSpecArr = Array.from(outputSpec);
-    let inputDimMap, outputDimMap;
-
-    if (leftElided) {
-      // If we have beginning dimensions elided, we need to use negative
-      // indexing to determine where in the input dimension our values are.
-      inputDimMap = new Map<string, number>(
-        inputSpecArr.map((dim, i) => [dim, i + elided - inputShape.length])
-      );
-
-      // Because we've constructed the full output shape already, we don't need
-      // to do negative indexing.
-      outputDimMap = new Map<string, number>(
-        outputSpecArr.map((dim, i) => [dim, i + elided])
-      );
-    } else {
-      inputDimMap = new Map<string, number>(
-        inputSpecArr.map((dim, i) => [dim, i])
-      );
-      outputDimMap = new Map<string, number>(
-        outputSpecArr.map((dim, i) => [dim, i])
-      );
-    }
-
-    for (const dim of inputSpec) {
-      const inputShapeAtDim = inputShape[inputDimMap.get(dim)];
-      if (outputDimMap.has(dim)) {
-        const outputShapeAtDim = outputShape[outputDimMap.get(dim)];
-        if (outputShapeAtDim !== null && outputShapeAtDim !== inputShapeAtDim) {
-          throw new ValueError(
-            `Input shape and output shape do not match at shared dimension `+
-            `'${dim}'. Input shape is ${inputShapeAtDim}, and output shape ` +
-            `is ${outputShapeAtDim}.`
-          );
-        }
-      }
-    }
-
-    for (const dim of outputSpec) {
-      if (!inputSpec.includes(dim) && !weightSpec.includes(dim)) {
-        throw new ValueError(
-          `Dimension '${dim}' was specified in the output '${outputSpec}' ` +
-          `but has no corresponding dimension in the input spec ` +
-          `'${inputSpec}' or weight spec '${weightSpec}'`
-        );
-      }
-    }
-
-    const weightShape: number[] = [];
-    for (const dim of weightSpec) {
-      if (inputDimMap.has(dim)) {
-        weightShape.push(inputShape[inputDimMap.get(dim)]);
-      } else if (outputDimMap.has(dim)) {
-        weightShape.push(outputShape[outputDimMap.get(dim)]);
-      } else {
-        throw new ValueError(
-          `Weight dimension '${dim}' did not have a match in either the ` +
-          `input spec '${inputSpec}' or the output spec '${outputSpec}'. For ` +
-          `this layer, the weight must be fully specified.`
-        );
-      }
-    }
-
-    let biasShape: number[] | null = null;
-    if (biasAxes != null) {
-      const numLeftElided = leftElided ? elided : 0;
-      const idxMap: { [char: string]: number } = {};
-      for (let i = 0; i < outputSpec.length; i++) {
-        idxMap[outputSpec[i]] = outputShape[i + numLeftElided];
-      }
-
-      for (const char of biasAxes) {
-        if (!outputSpec.includes(char)) {
-          throw new ValueError(
-            `Bias dimension '${char}' was requested, but is not part of the ` +
-            `output spec '${outputSpec}'`
-          );
-        }
-      }
-
-      const firstBiasLocation = Math.min(
-        ...biasAxes.split('').map(char => outputSpec.indexOf(char))
-      );
-      const biasOutputSpec = outputSpec.slice(firstBiasLocation);
-
-      biasShape = biasOutputSpec.split('').map(char =>
-        biasAxes.includes(char) ? idxMap[char] : 1
-      );
-
-      if (!leftElided) {
-        for (let _ = 0; _ < elided; _++) {
-          biasShape.push(1);
-        }
-      }
-    } else {
-      biasShape = null;
-    }
-    return [weightShape as Shape, weightShape as Shape, biasShape as Shape];
   }
 }
 serialization.registerClass(EinsumDense);
