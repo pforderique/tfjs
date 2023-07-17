@@ -42,7 +42,7 @@ export function analyzeEinsumString(
   inputShape: Shape,
   outputShape: Shape
 ): [Shape, Shape, Shape] {
-  const dotReplacedString = equation.replace(/\.\.\./g, "0");
+  const dotReplacedString = equation.replace(/\.\.\./g, '0');
 
   // This is the case where no ellipses are present in the string.
   let splitString =
@@ -86,21 +86,22 @@ export function analyzeSplitString(
 ): [Shape, Shape, Shape] {
   const inputSpec = splitString[1];
   const weightSpec = splitString[2];
-  let outputSpec = splitString[3];
+  const outputSpec = splitString[3];
   const elided = inputShape.length - inputSpec.length;
 
-  outputShape = Array.isArray(outputShape) ? outputShape : [outputShape];
-  outputShape.unshift(inputShape[0]);
+  const newOutputShape = Array.isArray(outputShape) ?
+  outputShape.slice() : [outputShape];
+  newOutputShape.unshift(inputShape[0]);
 
   if (elided > 0 && leftElided) {
     for(let i = 0; i < elided; i++) {
       // We already inserted the 0th input dimension at dim 0, so we need
       // to start at location 1 here.
-      outputShape.push(1, inputShape[i]);
+      newOutputShape.push(1, inputShape[i]);
     }
   } else if (elided > 0 && !leftElided) {
     for(let i = inputShape.length - elided; i < inputShape.length; i++) {
-      outputShape.push(inputShape[i]);
+      newOutputShape.push(inputShape[i]);
     }
   }
 
@@ -132,7 +133,7 @@ export function analyzeSplitString(
   for (const dim of inputSpec) {
     const inputShapeAtDim = inputShape[inputDimMap.get(dim)];
     if (outputDimMap.has(dim)) {
-      const outputShapeAtDim = outputShape[outputDimMap.get(dim)];
+      const outputShapeAtDim = newOutputShape[outputDimMap.get(dim)];
       if (outputShapeAtDim !== null && outputShapeAtDim !== inputShapeAtDim) {
         throw new ValueError(
           `Input shape and output shape do not match at shared dimension `+
@@ -158,7 +159,7 @@ export function analyzeSplitString(
     if (inputDimMap.has(dim)) {
       weightShape.push(inputShape[inputDimMap.get(dim)]);
     } else if (outputDimMap.has(dim)) {
-      weightShape.push(outputShape[outputDimMap.get(dim)]);
+      weightShape.push(newOutputShape[outputDimMap.get(dim)]);
     } else {
       throw new ValueError(
         `Weight dimension '${dim}' did not have a match in either the ` +
@@ -173,7 +174,7 @@ export function analyzeSplitString(
     const numLeftElided = leftElided ? elided : 0;
     const idxMap: { [char: string]: number } = {};
     for (let i = 0; i < outputSpec.length; i++) {
-      idxMap[outputSpec[i]] = outputShape[i + numLeftElided];
+      idxMap[outputSpec[i]] = newOutputShape[i + numLeftElided];
     }
 
     for (const char of biasAxes) {
@@ -202,7 +203,7 @@ export function analyzeSplitString(
   } else {
     biasShape = null;
   }
-  return [weightShape as Shape, weightShape as Shape, biasShape as Shape];
+  return [weightShape as Shape, biasShape as Shape, newOutputShape as Shape];
 }
 
 export declare interface EinsumDenseArgs extends LayerArgs {
@@ -355,8 +356,8 @@ export class EinsumDense extends Layer {
   private readonly kernelConstraint: Constraint;
   private readonly biasConstraint: Constraint;
   private fullOutputShape: Shape;
-  _kernel: LayerVariable;
-  _bias: LayerVariable;
+  private _kernel: LayerVariable;
+  private _bias: LayerVariable;
 
   constructor(args: EinsumDenseArgs) {
     super(args);
@@ -365,8 +366,9 @@ export class EinsumDense extends Layer {
     this.partialOutputShape =
       Array.isArray(args.outputShape) ? args.outputShape : [args.outputShape];
     this.activation = getActivation(args.activation);
-    this.kernelInitializer = getInitializer(args.kernelInitializer);
-    this.biasInitializer = getInitializer(args.biasInitializer);
+    this.kernelInitializer = getInitializer(
+      args.kernelInitializer ?? 'glorotUniform');
+    this.biasInitializer = getInitializer(args.biasInitializer ?? 'zeros');
     this.kernelRegularizer = getRegularizer(args.kernelRegularizer);
     this.biasRegularizer = getRegularizer(args.biasRegularizer);
     this.kernelConstraint = getConstraint(args.kernelConstraint);
@@ -399,7 +401,7 @@ export class EinsumDense extends Layer {
       this.kernelConstraint,
     );
 
-    if (biasShape !== null) {
+    if (biasShape != null) {
       this._bias = this.addWeight(
         'bias',
         biasShape,

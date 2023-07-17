@@ -60,7 +60,6 @@ describe('EinsumDense', () => {
       const [weightShape, biasShape, _] = analyzeEinsumString(
         combo.equation, combo.biasAxes, combo.inputShape, combo.outputShape
       );
-
       expect(weightShape).toEqual(combo.expectedWeightShape);
       expect(biasShape).toEqual(combo.expectedBiasShape);
     });
@@ -79,7 +78,7 @@ describe('EinsumDense', () => {
       const outputTensor = layer.apply(inputTensor) as Tensor;
 
       expect(layer.kernel.shape).toEqual(combo.expectedWeightShape);
-      if (combo.expectedBiasShape != null) {
+      if (combo.expectedBiasShape === null) {
         expect(layer.bias).toBeNull();
       } else {
         expect(layer.bias.shape).toEqual(combo.expectedBiasShape);
