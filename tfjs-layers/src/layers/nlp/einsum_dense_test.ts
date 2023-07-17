@@ -292,6 +292,7 @@ describe('EinsumDense', () => {
     });
   }
 
+  // TODO(pforderique): fix failing tests.
   for (const combo of combinations) {
     testWeightShape(combo);
     testLayerCreation(combo);
