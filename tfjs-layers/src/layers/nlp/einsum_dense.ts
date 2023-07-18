@@ -82,7 +82,7 @@ export function analyzeSplitString(
   biasAxes: string,
   inputShape: Shape,
   outputShape: Shape|number,
-  leftElided?: boolean
+  leftElided = false
 ): [Shape, Shape, Shape] {
   const inputSpec = splitString[1];
   const weightSpec = splitString[2];
@@ -94,10 +94,10 @@ export function analyzeSplitString(
   newOutputShape.unshift(inputShape[0]);
 
   if (elided > 0 && leftElided) {
-    for(let i = 0; i < elided; i++) {
+    for(let i = 1; i < elided; i++) {
       // We already inserted the 0th input dimension at dim 0, so we need
       // to start at location 1 here.
-      newOutputShape.push(1, inputShape[i]);
+      newOutputShape.splice(1, 0, inputShape[i]);
     }
   } else if (elided > 0 && !leftElided) {
     for(let i = inputShape.length - elided; i < inputShape.length; i++) {
@@ -113,7 +113,12 @@ export function analyzeSplitString(
     // If we have beginning dimensions elided, we need to use negative
     // indexing to determine where in the input dimension our values are.
     inputDimMap = new Map<string, number>(
-      inputSpecArr.map((dim, i) => [dim, i + elided - inputShape.length])
+      inputSpecArr.map((dim, i) => {
+        // This converts any negative indices to positive ones.
+        const idx = i + elided - inputShape.length;
+        const positiveIdx = idx < 0 ? inputShape.length + idx : idx;
+        return [dim, positiveIdx];
+      })
     );
 
     // Because we've constructed the full output shape already, we don't need
