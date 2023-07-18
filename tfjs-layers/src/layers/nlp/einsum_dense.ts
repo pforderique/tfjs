@@ -20,7 +20,7 @@
  */
 
 /* Original source: keras/layers/core/einsum_dense.py */
-import { Tensor, Tensor2D, einsum, serialization } from '@tensorflow/tfjs-core';
+import { Tensor, Tensor2D, einsum, serialization, tidy } from '@tensorflow/tfjs-core';
 
 import { Activation, getActivation, serializeActivation } from '../../activations';
 import { Constraint, ConstraintIdentifier, getConstraint, serializeConstraint } from '../../constraints';
@@ -426,15 +426,17 @@ export class EinsumDense extends Layer {
   }
 
   override call(inputs: Tensor|Tensor[], kwargs: Kwargs): Tensor|Tensor2D {
-    inputs = Array.isArray(inputs) ? inputs : [inputs];
-    let ret = einsum(this.equation, ...inputs, this.kernel.read());
-    if (this.bias != null) {
-      ret = ret.add(this.bias.read());
-    }
-    if (this.activation != null) {
-      ret = this.activation.apply(ret);
-    }
-    return ret;
+    return tidy(() => {
+      inputs = Array.isArray(inputs) ? inputs : [inputs];
+      let ret = einsum(this.equation, ...inputs, this.kernel.read());
+      if (this.bias != null) {
+        ret = ret.add(this.bias.read());
+      }
+      if (this.activation != null) {
+        ret = this.activation.apply(ret);
+      }
+      return ret;
+    });
   }
 }
 serialization.registerClass(EinsumDense);

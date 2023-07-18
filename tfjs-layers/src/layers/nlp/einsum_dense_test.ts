@@ -19,7 +19,7 @@
  * Unit Tests for TFJS-based EinsumDense Layer.
  */
 
-import { Tensor } from '@tensorflow/tfjs-core';
+import { memory, Tensor } from '@tensorflow/tfjs-core';
 
 import { analyzeEinsumString, EinsumDense } from './einsum_dense';
 import { Shape } from '../../keras_format/common';
@@ -296,4 +296,22 @@ describe('EinsumDense', () => {
     testWeightShape(combo);
     testLayerCreation(combo);
   }
+
+  it('Does not leak memory', () => {
+    const combo = combinations[0];
+    const layer = new EinsumDense({
+      equation: combo.equation,
+      biasAxes: combo.biasAxes,
+      outputShape: combo.outputShape,
+    });
+    const nonBatchInputShape = combo.inputShape.slice(1);
+    const inputTensor = input({shape: nonBatchInputShape});
+
+    const numTensors = memory().numTensors;
+    layer.apply(inputTensor);
+
+    expect(memory().numTensors).toEqual(numTensors + 1);
+  });
+
+  // TODO(pforderique): Test serialization.
 });
