@@ -305,11 +305,13 @@ export declare interface EinsumDenseArgs extends LayerArgs {
  * dimension in the `outputShape` is `null`, because the sequence dimension
  * `b` has an unknown shape.
  *
+ * ```js
  * const layer = new EinsumDense({
  *    equation: "abc,cd->abd", outputShape: [null, 64], biasAxes: "d"});
  * const inputTensor = tf.input({shape: [32, 128]});
  * const outputTensor = layer.call(inputTensor);
  * console.log(outputTensor);  // [null, 32, 64]
+ * ```
  *
  * **Applying a dense layer to a sequence using ellipses**
  *
@@ -322,11 +324,13 @@ export declare interface EinsumDenseArgs extends LayerArgs {
  * layer can handle any number of sequence dimensions - including the case
  * where no sequence dimension exists.
  *
+ * ```js
  * const layer = new EinsumDense({
  *    equation: "...x,xy->...y", outputShape: 64, biasAxes: "y"});
  * const inputTensor = tf.input({shape: [32, 128]});
  * const outputTensor = layer.call(inputTensor);
  * console.log(outputTensor);  // [null, 32, 64]
+ * ``
  */
 export class EinsumDense extends Layer {
   /** @nocollapse */
