@@ -184,7 +184,7 @@ export declare interface MultiHeadAttentionArgs extends LayerArgs {
    * Axes over which the attention is applied. `null` means attention over
    * all axes, but batch, heads, and features.
    */
-  attentionAxes: number[]|number;
+  attentionAxes?: number[]|number;
 
   /**
    * Initializer for dense layer kernels.
@@ -298,6 +298,7 @@ export declare interface MultiHeadAttentionOptions {
  * Performs 1D cross-attention over two sequence inputs with an attention mask.
  * Returns the additional attention weights over heads.
  *
+ * ```js
  * const layer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
  * const target = tf.input({shape: [8, 16]});
  * const source = tf.input({shape: [4, 16]});
@@ -305,14 +306,17 @@ export declare interface MultiHeadAttentionOptions {
  *     target, {value: source});
  * console.log(outputTensor.shape);  // [null, 8, 16]
  * console.log(weights.shape);  // [null, 2, 8, 4]
+ * ```
  *
  * Performs 2D self-attention over a 5D input tensor on axes 2 and 3.
  *
+ * ```js
  * const layer = new MultiHeadAttention({
  *    numHeads: 2, keyDim: 2, attentionAxes: [2, 3]});
  * const inputTensor = tf.input({shape: [5, 3, 4, 16]});
  * const outputTensor = layer.call(inputTensor, {value: inputTensor});
  * console.log(outputTensor.shape);  // [null, 5, 3, 4, 16]
+ * ```
  *
  * Returns:
  *    attentionOutput: The result of the computation, of shape `(B, T, E)`,
