@@ -89,8 +89,8 @@ export function analyzeSplitString(
   const outputSpec = splitString[3];
   const elided = inputShape.length - inputSpec.length;
 
-  const newOutputShape = Array.isArray(outputShape) ?
-  outputShape.slice() : [outputShape];
+  const newOutputShape: Shape = Array.isArray(outputShape) ?
+    outputShape.slice() : [outputShape];
   newOutputShape.unshift(inputShape[0]);
 
   if (elided > 0 && leftElided) {
@@ -159,7 +159,7 @@ export function analyzeSplitString(
     }
   }
 
-  const weightShape: number[] = [];
+  const weightShape: Shape = [];
   for (const dim of weightSpec) {
     if (inputDimMap.has(dim)) {
       weightShape.push(inputShape[inputDimMap.get(dim)]);
@@ -174,7 +174,7 @@ export function analyzeSplitString(
     }
   }
 
-  let biasShape: number[] | null = null;
+  let biasShape: Shape;
   if (biasAxes != null) {
     const numLeftElided = leftElided ? elided : 0;
     const idxMap: { [char: string]: number } = {};
@@ -208,7 +208,7 @@ export function analyzeSplitString(
   } else {
     biasShape = null;
   }
-  return [weightShape as Shape, biasShape as Shape, newOutputShape as Shape];
+  return [weightShape, biasShape, newOutputShape];
 }
 
 export declare interface EinsumDenseArgs extends LayerArgs {
