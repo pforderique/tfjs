@@ -825,6 +825,7 @@ export class MultiHeadAttention extends Layer {
    *    [queryShape, valueShape, keyShape]. If no keyShape provided, valueShape
    *    is assumed as the keyShape.
    */
+  // TODO(pforderique): Fix error here (when getting called from apply()).
   override computeOutputShape(inputShapes: [Shape, Shape, Shape|null]): Shape {
     let [queryShape, valueShape, keyShape] = inputShapes;
     if (keyShape == null) {

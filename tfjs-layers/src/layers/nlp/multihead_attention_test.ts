@@ -19,23 +19,23 @@
  * Unit Tests for MultiHeadAttention layer.
  */
 
-import { Tensor } from '@tensorflow/tfjs-core';
+import { Tensor, ones } from '@tensorflow/tfjs-core';
 
-import { input } from '../../exports';
+import { input, model } from '../../exports';
 import { Shape } from '../../keras_format/common';
 import { MultiHeadAttention } from './multihead_attention';
 
 describe('MultiHeadAttention', () => {
 
-  /**
-   * Test that the attention layer can be created without a mask tensor.
-   */
   interface NonMaskedAttentionArgs {
     testcaseName: string,
     valueDim: number,
     outputShape: Shape,
     outputDims: Shape
   }
+  /**
+   * Test that the attention layer can be created without a mask tensor.
+   */
   function testNonMaskedAttention(
     {testcaseName, valueDim, outputShape, outputDims}: NonMaskedAttentionArgs
   ) {
@@ -72,5 +72,62 @@ describe('MultiHeadAttention', () => {
     testNonMaskedAttention(param);
   }
 
+  // Test with one input (self-attenntion) and no mask tensor.
+  it('non masked self attention', () => {
+    const testLayer = new MultiHeadAttention({numHeads: 12, keyDim: 64});
+    // Create a 3-dimensional input (the first dimension is implicit).
+    const query = input({shape: [40, 80]});
+    const output = testLayer.apply(query) as Tensor;
+    expect(output.shape).toEqual([null, 40, 80]);
+  });
+
+  // Test attention outputs with coefficients.
+  it('attention scores', () => {
+    const testLayer = new MultiHeadAttention({numHeads: 12, keyDim: 64});
+    // Create a 3-dimensional input (the first dimension is implicit).
+    const query = ones([40, 80]);
+    const [output, coef] =
+      testLayer.callAndReturnAttentionScores(query, {value: query});
+    expect(output.shape).toEqual([null, 40, 80]);
+    expect(coef.shape).toEqual([null, 12, 40, 40]);
+  });
+
+  // Test attention outputs with coefficients.
+  it('attention scores with values', () => {
+    const testLayer = new MultiHeadAttention({numHeads: 12, keyDim: 64});
+    // Create a 3-dimensional input (the first dimension is implicit).
+    const query = ones([40, 80]);
+    const value = ones([60, 80]);
+    const [output, coef] =
+      testLayer.callAndReturnAttentionScores(query, {value});
+    expect(output.shape).toEqual([null, 40, 80]);
+    expect(coef.shape).toEqual([null, 12, 40, 60]);
+  });
+
+  interface MaskedAttentionArgs {
+    testcaseName: string,
+    useBias: boolean,
+  };
+  /**
+   * Test with a mask tensor.
+   */
+  function testMaskedAttention({testcaseName, useBias}: MaskedAttentionArgs) {
+    it(`${testcaseName} masked attention`, () => {
+      const testLayer = new MultiHeadAttention({
+        numHeads: 2,
+        keyDim: 2,
+        useBias,
+      });
+      // Create a 3-dimensional input (the first dimension is implicit).
+      const batchSize = 3;
+      const query = input({shape: [4, 8]});
+      const value = input({shape: [2, 8]});
+      const attentionMask = input({shape: [4, 2]});
+      const output = testLayer.apply(query, {value, attentionMask}) as Tensor;
+
+      // Create a model containing the test layer.
+      // ! Left off here. Perhaps do this test case later? const modes = model()
+    });
+  }
   // TODO(pforderique): Test memory and serialization.
 });
