@@ -21,9 +21,10 @@
 
 import { Tensor, ones } from '@tensorflow/tfjs-core';
 
-import { input } from '../../exports';
 import { Shape } from '../../keras_format/common';
 import { MultiHeadAttention } from './multihead_attention';
+import { SymbolicTensor } from '../../engine/topology';
+import { input, model } from '../../exports';
 
 describe('MultiHeadAttention', () => {
 
@@ -102,30 +103,33 @@ describe('MultiHeadAttention', () => {
     expect(coef.shape).toEqual([1, 12, 40, 60]);
   });
 
-  // interface MaskedAttentionArgs {
-  //   testcaseName: string,
-  //   useBias: boolean,
-  // };
-  // /**
-  //  * Test with a mask tensor.
-  //  */
-  // function testMaskedAttention({testcaseName, useBias}: MaskedAttentionArgs) {
-  //   it(`${testcaseName} masked attention`, () => {
-  //     const testLayer = new MultiHeadAttention({
-  //       numHeads: 2,
-  //       keyDim: 2,
-  //       useBias,
-  //     });
-  //     // Create a 3-dimensional input (the first dimension is implicit).
-  //     const batchSize = 3;
-  //     const query = input({shape: [4, 8]});
-  //     const value = input({shape: [2, 8]});
-  //     const attentionMask = input({shape: [4, 2]});
-  //     const output = testLayer.apply(query, {value, attentionMask}) as Tensor;
-
-  //     // Create a model containing the test layer.
-  //     // ! Left off here. Perhaps do this test case later? const modes = model()
-  //   });
-  // }
+  interface MaskedAttentionArgs {
+    testcaseName: string,
+    useBias: boolean,
+  };
+  /**
+   * Test with a mask tensor.
+   */
+  function testMaskedAttention({testcaseName, useBias}: MaskedAttentionArgs) {
+    it(`${testcaseName} masked attention`, () => {
+      const testLayer = new MultiHeadAttention({
+        numHeads: 2,
+        keyDim: 2,
+        useBias,
+      });
+      // Create a 3-dimensional input (the first dimension is implicit).
+      const batchSize = 3;
+      const query = input({shape: [4, 8]});
+      const value = input({shape: [2, 8]});
+      const attentionMask = input({shape: [4, 2]});
+      const output =
+        testLayer.apply(query, {value, attentionMask}) as SymbolicTensor;
+      // const output = input({shape: [4, 8]});
+      // Create a model containing the test layer.
+      const mha =
+        model({inputs: [query, value, attentionMask], outputs: output});
+      // ! Left off here. Perhaps do this test case later? const modes = model()
+    });
+  }
   // TODO(pforderique): Test memory and serialization.
 });
