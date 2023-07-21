@@ -21,10 +21,11 @@
 
 import { Tensor, ones, tensor } from '@tensorflow/tfjs-core';
 
-import { Shape } from '../../keras_format/common';
-import { MultiHeadAttention } from './multihead_attention';
+import { TruncatedNormal } from '../../initializers';
 import { SymbolicTensor } from '../../engine/topology';
 import { input, model } from '../../exports';
+import { Shape } from '../../keras_format/common';
+import { MultiHeadAttention } from './multihead_attention';
 
 describe('MultiHeadAttention', () => {
   interface TestArgs {};
@@ -199,5 +200,22 @@ describe('MultiHeadAttention', () => {
   for (const param of params) {
     testMaskedAttention(param as MaskedAttentionArgs);
   }
+
+  // Test with a specified initializer
+  it('initializer', () => {
+    const testLayer = new MultiHeadAttention({
+      numHeads: 12,
+      keyDim: 64,
+      kernelInitializer: new TruncatedNormal({stddev: 0.02}),
+    });
+    const query = input({shape: [40, 80]});
+    const output = testLayer.apply(query, {value: query}) as SymbolicTensor;
+
+    // Make sure the sub layers have different kernel init value, and not
+    // reusing the initializers.
+    expect(output.shape).toEqual([null, 40, 80]);
+    expect(testLayer.queryDense.kernel.read().dataSync())
+      .not.toEqual(testLayer.keyDense.kernel.read().dataSync());
+  });
   // TODO(pforderique): Test memory and serialization.
 });

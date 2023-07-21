@@ -189,38 +189,38 @@ export declare interface MultiHeadAttentionArgs extends LayerArgs {
    * Initializer for dense layer kernels.
    * Defaults to `"glorotUniform"`.
    */
-  kernelInitializer?: InitializerIdentifier;
+  kernelInitializer?: Initializer|InitializerIdentifier;
 
   /**
    * Initializer for dense layer biases.
    * Defaults to `"zeros"`.
    */
-  biasInitializer?: InitializerIdentifier;
+  biasInitializer?: Initializer|InitializerIdentifier;
 
   /**
    * Regularizer for dense layer kernels.
    */
-  kernelRegularizer?: RegularizerIdentifier;
+  kernelRegularizer?: Regularizer|RegularizerIdentifier;
 
   /**
    * Regularizer for dense layer biases.
    */
-  biasRegularizer?: RegularizerIdentifier;
+  biasRegularizer?: Regularizer|RegularizerIdentifier;
 
   /**
    * Regularizer for dense layer activity.
    */
-  activityRegularizer?: RegularizerIdentifier;
+  activityRegularizer?: Regularizer|RegularizerIdentifier;
 
   /**
    * Constraint for dense layer kernels.
    */
-  kernelConstraint?: ConstraintIdentifier;
+  kernelConstraint?: Constraint|ConstraintIdentifier;
 
   /**
    * Constraint for dense layer kernels.
    */
-  biasConstraint?: ConstraintIdentifier;
+  biasConstraint?: Constraint|ConstraintIdentifier;
 }
 
 export declare interface MultiHeadAttentionOptions {
@@ -350,10 +350,10 @@ export class MultiHeadAttention extends Layer {
   private queryShape: Shape;
   private keyShape: Shape;
   private valueShape: Shape;
-  private queryDense: EinsumDense;
-  private keyDense: EinsumDense;
-  private valueDense: EinsumDense;
-  private outputDense: EinsumDense;
+  queryDense: EinsumDense;
+  keyDense: EinsumDense;
+  valueDense: EinsumDense;
+  outputDense: EinsumDense;
 
   constructor(args: MultiHeadAttentionArgs) {
     super(args);
