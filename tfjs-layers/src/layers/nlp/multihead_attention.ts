@@ -20,19 +20,17 @@
  */
 
 /* Original source: keras/layers/attention/multi_head_attention.py */
-import { Tensor, add, einsum, exp, linalg, logSumExp, mul, ones, scalar, serialization, sub } from '@tensorflow/tfjs-core';
+import { Tensor, einsum, linalg, mul, ones, serialization } from '@tensorflow/tfjs-core';
 import { warn } from '@tensorflow/tfjs-core/dist/log';
 
 import { cast, expandDims } from '../../backend/tfjs_backend';
 import { Constraint, ConstraintIdentifier, getConstraint, serializeConstraint } from '../../constraints';
 import { Layer, LayerArgs, SymbolicTensor } from '../../engine/topology';
 import { ValueError } from '../../errors';
-import { input } from '../../exports';
 import { Initializer, InitializerIdentifier, getInitializer, serializeInitializer } from '../../initializers';
 import { Shape } from '../../keras_format/common';
 import { Regularizer, RegularizerIdentifier, getRegularizer, serializeRegularizer } from '../../regularizers';
 import { Kwargs } from '../../types';
-import { getExactlyOneTensor } from '../../utils/types_utils';
 import { Softmax } from '../advanced_activations';
 import { Dropout } from '../core';
 import { EinsumDense } from './einsum_dense';
@@ -64,7 +62,7 @@ const _CHR_IDX = 'abcdefghijklmnopqrstuvwxyz'.split('');
 function buildAttentionEquation(
   rank: number, attnAxes: number[]
 ): [string, string, number] {
-  const targetNotation = _CHR_IDX.slice(0, rank);
+  const targetNotationArr = _CHR_IDX.slice(0, rank);
   // `batchDims` includes the head dim.
   const excludeIndices = [...attnAxes, rank - 1];
   const batchDims = [];
@@ -77,7 +75,7 @@ function buildAttentionEquation(
   let sourceNotation = "";
   for (let i = 0; i < rank; i++) {
     if (batchDims.includes(i) || i === rank - 1) {
-      sourceNotation += targetNotation[i];
+      sourceNotation += targetNotationArr[i];
     } else {
       sourceNotation += _CHR_IDX[letterOffset];
       letterOffset++;
@@ -85,10 +83,11 @@ function buildAttentionEquation(
   }
 
   const productNotation =
-    batchDims.map(i => targetNotation[i]).concat(
-    attnAxes.map(i => targetNotation[i]),
+    batchDims.map(i => targetNotationArr[i]).concat(
+    attnAxes.map(i => targetNotationArr[i]),
     attnAxes.map(i => sourceNotation[i]),
   ).join('');
+  const targetNotation = targetNotationArr.join('');
 
   const dotProductEquation =
     `${sourceNotation},${targetNotation}->${productNotation}`;
@@ -443,26 +442,27 @@ export class MultiHeadAttention extends Layer {
    * Once the method is called, this.builtFromSignature will be set to true.
    */
   private buildFromSignature(
-    query: SymbolicTensor|Shape,
-    value: SymbolicTensor|Shape,
-    key?: SymbolicTensor|Shape
+    queryShape: Shape,
+    valueShape: Shape,
+    keyShape?: Shape
   ) {
     this.builtFromSignature = true;
-    const queryShape =
-      query instanceof SymbolicTensor ? query : input({shape: query});
-    const valueShape =
-      value instanceof SymbolicTensor ? value : input({shape: value});
 
-    let keyShape: SymbolicTensor;
-    if (key === null) {
+    if (keyShape === null) {
       keyShape = valueShape;
-    } else if (key instanceof SymbolicTensor) {
-      keyShape = key;
-    } else {
-      keyShape = input({shape: key});
     }
 
-    const freeDims = queryShape.rank - 1;
+    this.queryShape = queryShape;
+    this.valueShape = valueShape;
+    this.keyShape = keyShape;
+
+    // Not using SymbolicTensors since tf.input() adds a batch dimension to the
+    // given shape, therefore giving the tensor the wrong rank.
+    const queryRank = queryShape.length;
+    const valueRank = valueShape.length;
+    const keyRank = keyShape.length;
+
+    const freeDims = queryRank - 1;
     let [einsumEquation, biasAxes, outputRank] =
       buildProjectionEquation(freeDims, 1, 2);
     this.queryDense = new EinsumDense({
@@ -474,7 +474,7 @@ export class MultiHeadAttention extends Layer {
     });
 
     [einsumEquation, biasAxes, outputRank] =
-      buildProjectionEquation(keyShape.rank - 1, 1, 2);
+      buildProjectionEquation(keyRank - 1, 1, 2);
     this.keyDense = new EinsumDense({
       equation: einsumEquation,
       outputShape: getOutputShape(outputRank - 1, [this.numHeads, this.keyDim]),
@@ -484,7 +484,7 @@ export class MultiHeadAttention extends Layer {
     });
 
     [einsumEquation, biasAxes, outputRank] =
-      buildProjectionEquation(valueShape.rank - 1, 1, 2);
+      buildProjectionEquation(valueRank - 1, 1, 2);
     this.valueDense = new EinsumDense({
       equation: einsumEquation,
       outputShape: getOutputShape(
@@ -493,10 +493,6 @@ export class MultiHeadAttention extends Layer {
       name: 'value',
       ...this.getCommonKwargsForSublayer(),
     });
-
-    this.queryShape = queryShape.shape;
-    this.valueShape = valueShape.shape;
-    this.keyShape = keyShape.shape;
 
     // Builds the attention computations for multi-head dot product attention.
     this.buildAttention(outputRank);
@@ -511,9 +507,14 @@ export class MultiHeadAttention extends Layer {
     // Create new clone of kernel/bias initializer, so that we don't reuse
     // the initializer instance, which could lead to same init value since
     // initializer is stateless.
-    const kernelInitializer =
-      getInitializer(this.kernelInitializer.getConfig());
-    const biasInitializer = getInitializer(this.biasInitializer.getConfig());
+    const kernelInitializer = getInitializer({
+      className: this.kernelInitializer.getClassName(),
+      config: this.kernelInitializer.getConfig(),
+    });
+    const biasInitializer = getInitializer({
+      className: this.biasInitializer.getClassName(),
+      config: this.biasInitializer.getConfig(),
+    });
 
     const commonKwargs = {
       kernelInitializer: kernelInitializer,
@@ -590,28 +591,7 @@ export class MultiHeadAttention extends Layer {
     for (let i = startIdx; i < attnScoresRank; i++) {
       normAxes.push(i);
     }
-    // TODO(pforderique): Make Softmax support number[] for axis.
-    this.softmax = new Softmax({axis: normAxes[0]});
-    const originalSoftmaxCall = this.softmax.call;
-    this.softmax.call = (inputs: Tensor, kwargs: Kwargs) => {
-      let x = getExactlyOneTensor(inputs);
-      const mask = kwargs['mask'] as Tensor;
-      if (mask != null) {
-        // Since mask is 1.0 for positions we want to keep and 0.0 for masked
-        // positions, this operation will create a tensor which is 0.0 for
-        // positions we want to attend and -1e.9 for masked positions.
-        const adder =
-          mul(sub(ones(x.shape), cast(mask, x.dtype)), scalar(-1e9));
-
-        // Since we are adding it to the raw scores before the softmax, this
-        // is effectively the same as removing these entirely.
-        x = add(x, adder);
-      }
-      if (normAxes.length > 1) {
-        return exp(sub(x, logSumExp(inputs, normAxes, true)));
-      }
-      return originalSoftmaxCall(x, kwargs);
-    }
+    this.softmax = new Softmax({axis: normAxes});
     this.dropoutLayer = new Dropout({rate: this.dropout});
   }
 
@@ -679,6 +659,19 @@ export class MultiHeadAttention extends Layer {
       einsum(this.combineEquation, attentionScoresDropout, value);
 
     return [attentionOutput, attentionScores];
+  }
+
+  override apply(
+    inputs: Tensor | SymbolicTensor,
+    kwargs?: Kwargs
+  ): Tensor | Tensor[] | SymbolicTensor | SymbolicTensor[] {
+    if (!kwargs || !kwargs['value']) {
+      throw new ValueError('Must pass in `value` argument in `kwargs.`')
+    }
+    let newInputs: Tensor[]|SymbolicTensor[];
+
+    newInputs = [inputs, kwargs['value']].concat(kwargs['key'] ?? []);
+    return super.apply(newInputs);
   }
 
   override call(
