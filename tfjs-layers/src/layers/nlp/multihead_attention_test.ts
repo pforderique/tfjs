@@ -19,7 +19,7 @@
  * Unit Tests for MultiHeadAttention layer.
  */
 
-import { Tensor, ones, tensor } from '@tensorflow/tfjs-core';
+import { Tensor, ones, randomUniform, randomUniformInt, tensor } from '@tensorflow/tfjs-core';
 
 import { TruncatedNormal } from '../../initializers';
 import { SymbolicTensor } from '../../engine/topology';
@@ -31,10 +31,10 @@ describe('MultiHeadAttention', () => {
   interface TestArgs {};
 
   interface NonMaskedAttentionArgs extends TestArgs {
-    testcaseName: string,
-    valueDim: number,
-    outputShape: Shape,
-    outputDims: Shape
+    testcaseName: string;
+    valueDim: number;
+    outputShape: Shape;
+    outputDims: Shape;
   }
   /**
    * Test that the attention layer can be created without a mask tensor.
@@ -106,8 +106,8 @@ describe('MultiHeadAttention', () => {
   });
 
   interface MaskedAttentionArgs extends TestArgs {
-    testcaseName: string,
-    useBias: boolean,
+    testcaseName: string;
+    useBias: boolean;
   };
   /**
    * Test with a mask tensor.
@@ -211,11 +211,122 @@ describe('MultiHeadAttention', () => {
     const query = input({shape: [40, 80]});
     const output = testLayer.apply(query, {value: query}) as SymbolicTensor;
 
+    expect(output.shape).toEqual([null, 40, 80]);
+
     // Make sure the sub layers have different kernel init value, and not
     // reusing the initializers.
-    expect(output.shape).toEqual([null, 40, 80]);
     expect(testLayer.queryDense.kernel.read().dataSync())
       .not.toEqual(testLayer.keyDense.kernel.read().dataSync());
+    expect(testLayer.queryDense.kernel.read().dataSync())
+      .not.toEqual(testLayer.valueDense.kernel.read().dataSync());
+    expect(testLayer.queryDense.kernel.read().dataSync())
+      .not.toEqual(testLayer.outputDense.kernel.read().dataSync());
   });
+
+  interface HighDimAttentionArgs extends TestArgs {
+    testcaseName: string;
+    qDims: Shape;
+    vDims: Shape;
+    maskDims: Shape;
+    attentionAxes: number[];
+  };
+  /**
+   * Test with high dimensional inputs.
+   */
+  function testHighDimAttention({
+    testcaseName, qDims, vDims, maskDims, attentionAxes,
+  }: HighDimAttentionArgs) {
+    it(`${testcaseName} high dim attention`, () => {
+      const testLayer = new MultiHeadAttention({
+        numHeads: 2, keyDim: 2, attentionAxes,
+      });
+      const batchSize = 3;
+      const hiddenSize = 8;
+      // Generate data for the input (non-mask) tensors.
+      const queryShape = [batchSize].concat(qDims).concat(hiddenSize);
+      const valueShape = [batchSize].concat(vDims).concat(hiddenSize);
+      const maskShape = [batchSize].concat(maskDims);
+      const query = randomUniform(queryShape, 0, 10);
+      const value = randomUniform(valueShape, 0, 10);
+
+      // Invoke the data with a random set of mask data. This should mask at
+      // least one element.
+      const maskData = randomUniformInt(maskShape, 0, 2).asType('bool');
+
+      // Invoke the same data, but with a null mask (where no elements are
+      // masked).
+      const nullMaskData = ones(maskShape);
+
+      // Because one data is masked and one is not, the outputs should not be
+      // the same.
+      const queryTensor = input({shape: queryShape.slice(1), name: 'query'});
+      const valueTensor = input({shape: valueShape.slice(1), name: 'value'});
+      const maskTensor = input({shape: maskShape.slice(1), name: 'mask'});
+
+      const output = testLayer.apply(
+        query,
+        {value, attentionMask: maskTensor}
+      ) as SymbolicTensor;
+
+      // Create a model containing the test layer.
+      const mha = model(
+        {inputs: [queryTensor, valueTensor, maskTensor], outputs: output});
+
+      const maskedOutputData =
+        mha.predict([query, value, maskData]) as Tensor;
+      const unmaskedOutputData =
+        mha.predict([query, value, nullMaskData]) as Tensor;
+
+      expect(maskedOutputData.dataSync()).not.toEqual(
+        unmaskedOutputData.dataSync());
+    });
+  }
+  params = [
+    {
+      testcaseName: '4d_inputs_1freebatch_mask2',
+      qDims: [3, 4],
+      vDims: [3, 2],
+      maskDims: [4, 2],
+      attentionAxes: [2],
+    },
+    {
+      testcaseName: '4d_inputs_1freebatch_mask3',
+      qDims: [3, 4],
+      vDims: [3, 2],
+      maskDims: [3, 4, 2],
+      attentionAxes: [2],
+    },
+    {
+      testcaseName: '4d_inputs_1freebatch_mask4',
+      qDims: [3, 4],
+      vDims: [3, 2],
+      maskDims: [3, 2, 4, 2],
+      attentionAxes: [2],
+    },
+    {
+      testcaseName: '4D_inputs_2D_attention',
+      qDims: [3, 4],
+      vDims: [3, 2],
+      maskDims: [3, 4, 3, 2],
+      attentionAxes: [1, 2],
+    },
+    {
+      testcaseName: '5D_inputs_2D_attention',
+      qDims: [5, 3, 4],
+      vDims: [5, 3, 2],
+      maskDims: [3, 4, 3, 2],
+      attentionAxes: [2, 3],
+    },
+    {
+      testcaseName: '5D_inputs_2D_attention_fullmask',
+      qDims: [5, 3, 4],
+      vDims: [5, 3, 2],
+      maskDims: [5, 3, 4, 3, 2],
+      attentionAxes: [2, 3],
+    },
+  ];
+  for (const param of params) {
+    testHighDimAttention(param as HighDimAttentionArgs);
+  }
   // TODO(pforderique): Test memory and serialization.
 });
