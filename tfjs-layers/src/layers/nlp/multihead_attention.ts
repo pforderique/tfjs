@@ -671,6 +671,8 @@ export class MultiHeadAttention extends Layer {
     let newInputs: Tensor[]|SymbolicTensor[];
 
     newInputs = [inputs, kwargs['value']].concat(kwargs['key'] ?? []);
+
+    // TODO(pforderique): Support mask propogation.
     return super.apply(newInputs);
   }
 

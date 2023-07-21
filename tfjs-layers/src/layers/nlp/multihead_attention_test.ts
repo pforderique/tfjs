@@ -84,24 +84,22 @@ describe('MultiHeadAttention', () => {
   // Test attention outputs with coefficients.
   it('attention scores', () => {
     const testLayer = new MultiHeadAttention({numHeads: 12, keyDim: 64});
-    // Create a 3-dimensional input (the first dimension is implicit).
-    const query = ones([40, 80]);
+    const query = ones([1, 40, 80]);
     const [output, coef] =
       testLayer.callAndReturnAttentionScores(query, {value: query});
-    expect(output.shape).toEqual([null, 40, 80]);
-    expect(coef.shape).toEqual([null, 12, 40, 40]);
+    expect(output.shape).toEqual([1, 40, 80]);
+    expect(coef.shape).toEqual([1, 12, 40, 40]);
   });
 
   // Test attention outputs with coefficients.
   it('attention scores with values', () => {
     const testLayer = new MultiHeadAttention({numHeads: 12, keyDim: 64});
-    // Create a 3-dimensional input (the first dimension is implicit).
-    const query = ones([40, 80]);
-    const value = ones([60, 80]);
+    const query = ones([1, 40, 80]);
+    const value = ones([1, 60, 80]);
     const [output, coef] =
       testLayer.callAndReturnAttentionScores(query, {value});
-    expect(output.shape).toEqual([null, 40, 80]);
-    expect(coef.shape).toEqual([null, 12, 40, 60]);
+    expect(output.shape).toEqual([1, 40, 80]);
+    expect(coef.shape).toEqual([1, 12, 40, 60]);
   });
 
   // interface MaskedAttentionArgs {
