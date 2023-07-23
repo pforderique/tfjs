@@ -327,6 +327,7 @@ describe('MultiHeadAttention', () => {
   ];
   for (const param of params) {
     testHighDimAttention(param as HighDimAttentionArgs);
+    // LEFT OFF HERE: May have to change the input to be [query, value, ...].
   }
   // TODO(pforderique): Test memory and serialization.
 });
