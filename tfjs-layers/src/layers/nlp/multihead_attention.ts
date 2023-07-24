@@ -458,6 +458,7 @@ export class MultiHeadAttention extends Layer {
 
     // Not using SymbolicTensors since tf.input() adds a batch dimension to the
     // given shape, therefore giving the tensor the wrong rank.
+    console.log(queryShape);
     const queryRank = queryShape.length;
     const valueRank = valueShape.length;
     const keyRank = keyShape.length;
@@ -673,7 +674,7 @@ export class MultiHeadAttention extends Layer {
     newInputs = [inputs, kwargs['value']].concat(kwargs['key'] ?? []);
 
     // TODO(pforderique): Support mask propogation.
-    return super.apply(newInputs);
+    return super.apply(newInputs, kwargs);
   }
 
   override call(
