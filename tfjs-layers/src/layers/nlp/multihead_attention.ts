@@ -350,10 +350,10 @@ export class MultiHeadAttention extends Layer {
   private queryShape: Shape;
   private keyShape: Shape;
   private valueShape: Shape;
-  queryDense: EinsumDense;
-  keyDense: EinsumDense;
-  valueDense: EinsumDense;
-  outputDense: EinsumDense;
+  private queryDense: EinsumDense;
+  private keyDense: EinsumDense;
+  private valueDense: EinsumDense;
+  private outputDense: EinsumDense;
 
   constructor(args: MultiHeadAttentionArgs) {
     super(args);
@@ -381,6 +381,20 @@ export class MultiHeadAttention extends Layer {
     this.queryShape = null;
     this.keyShape = null;
     this.valueShape = null;
+  }
+
+  /**
+   * Should be used for testing purposes only.
+   */
+  get _queryDense() {
+    return this.queryDense;
+  }
+
+  /**
+   * Should be used for testing purposes only.
+   */
+  get _outputDense() {
+    return this.outputDense;
   }
 
   override getConfig(): serialization.ConfigDict {

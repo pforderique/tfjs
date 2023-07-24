@@ -106,8 +106,6 @@ describe('MultiHeadAttention', () => {
     expect(coef.shape).toEqual([1, 12, 40, 60]);
   });
 
-  // !Left off here! Ready to translate this code -->
-  // !maybe also go ahead and make queryDense private? and use getter?
   describe('Masked Attention', () => {
     interface MaskedAttentionArgs {
       testcaseName: string;
@@ -143,11 +141,11 @@ describe('MultiHeadAttention', () => {
         expectTensorsNotClose(maskedOutputData, unmaskedOutputData);
 
         if (useBias) {
-          expect(testLayer.queryDense.trainableWeights.length).toEqual(2);
-          expect(testLayer.outputDense.trainableWeights.length).toEqual(2);
+          expect(testLayer._queryDense.trainableWeights.length).toEqual(2);
+          expect(testLayer._outputDense.trainableWeights.length).toEqual(2);
         } else {
-          expect(testLayer.queryDense.trainableWeights.length).toEqual(1);
-          expect(testLayer.outputDense.trainableWeights.length).toEqual(1);
+          expect(testLayer._queryDense.trainableWeights.length).toEqual(1);
+          expect(testLayer._outputDense.trainableWeights.length).toEqual(1);
         }
       });
     }
