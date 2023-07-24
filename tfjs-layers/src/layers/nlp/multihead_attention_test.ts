@@ -25,7 +25,7 @@ import { TruncatedNormal } from '../../initializers';
 import { input } from '../../exports';
 import { Shape } from '../../keras_format/common';
 import { MultiHeadAttention } from './multihead_attention';
-import { expectTensorsNotClose } from '../../utils/test_utils';
+import { describeMathCPU, expectTensorsNotClose } from '../../utils/test_utils';
 
 describe('MultiHeadAttention', () => {
   interface TestArgs {};
@@ -240,7 +240,7 @@ describe('MultiHeadAttention', () => {
   function testHighDimAttention({
     testcaseName, qDims, vDims, maskDims, attentionAxes,
   }: HighDimAttentionArgs) {
-    it(`${testcaseName} high dim attention`, () => {
+    describeMathCPU(`${testcaseName} high dim attention`, () => {
       const testLayer = new MultiHeadAttention({
         numHeads: 2, keyDim: 2, attentionAxes,
       });
@@ -294,6 +294,9 @@ describe('MultiHeadAttention', () => {
       maskDims: [3, 2, 4, 2],
       attentionAxes: [2],
     },
+    // TODO(pforderique): Add test cases '4D_inputs_2D_attention',
+    // '5D_inputs_2D_attention', and '5D_inputs_2D_attention_fullmask' once
+    // GPU for rank 7 tensors is supported.
     {
       testcaseName: '4D_inputs_2D_attention',
       qDims: [3, 4],
