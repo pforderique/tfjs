@@ -22,10 +22,10 @@
 import { Tensor, ones, randomUniform, randomUniformInt } from '@tensorflow/tfjs-core';
 
 import { TruncatedNormal } from '../../initializers';
-import { SymbolicTensor } from '../../engine/topology';
-import { input, model } from '../../exports';
+import { input } from '../../exports';
 import { Shape } from '../../keras_format/common';
 import { MultiHeadAttention } from './multihead_attention';
+import { expectTensorsNotClose } from '../../utils/test_utils';
 
 describe('MultiHeadAttention', () => {
   interface TestArgs {};
@@ -263,26 +263,13 @@ describe('MultiHeadAttention', () => {
 
       // Because one data is masked and one is not, the outputs should not be
       // the same.
-      const queryTensor = input({shape: queryShape.slice(1), name: 'query'});
-      const valueTensor = input({shape: valueShape.slice(1), name: 'value'});
-      const maskTensor = input({shape: maskShape.slice(1), name: 'mask'});
 
-      const output = testLayer.apply(
-        query,
-        {value, attentionMask: maskTensor}
-      ) as SymbolicTensor;
+      const outputWithMask = testLayer.call(
+        query, {value, attentionMask: maskData});
+      const outputWithNullMask = testLayer.call(
+        query, {value, attentionMask: nullMaskData});
 
-      // Create a model containing the test layer.
-      const mha = model(
-        {inputs: [queryTensor, valueTensor, maskTensor], outputs: output});
-
-      const maskedOutputData =
-        mha.predict([query, value, maskData]) as Tensor;
-      const unmaskedOutputData =
-        mha.predict([query, value, nullMaskData]) as Tensor;
-
-      expect(maskedOutputData.dataSync()).not.toEqual(
-        unmaskedOutputData.dataSync());
+      expectTensorsNotClose(outputWithMask, outputWithNullMask);
     });
   }
   params = [
@@ -330,8 +317,8 @@ describe('MultiHeadAttention', () => {
     },
   ];
   for (const param of params) {
-    testHighDimAttention; param;
-    // testHighDimAttention(param as HighDimAttentionArgs);
+    // testHighDimAttention; param;
+    testHighDimAttention(param as HighDimAttentionArgs);
   }
   // TODO(pforderique): Test memory and serialization.
 });
