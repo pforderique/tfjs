@@ -227,7 +227,9 @@ describe('MultiHeadAttention', () => {
     // expectTensorsNotClose(queryKernel, outputKernel);
   });
 
-  describeMathCPU('High dimensions', () => {
+  // TODO(pforderique): Change to regular `describe` once GPU supports math for
+  // rank 7 tensors is supported.
+  describeMathCPU('High Dimensional Attention', () => {
     interface HighDimAttentionArgs extends TestArgs {
       testcaseName: string;
       qDims: Shape;
@@ -295,9 +297,6 @@ describe('MultiHeadAttention', () => {
         maskDims: [3, 2, 4, 2],
         attentionAxes: [2],
       },
-      // TODO(pforderique): Add test cases '4D_inputs_2D_attention',
-      // '5D_inputs_2D_attention', and '5D_inputs_2D_attention_fullmask' once
-      // GPU for rank 7 tensors is supported.
       {
         testcaseName: '4D_inputs_2D_attention',
         qDims: [3, 4],
