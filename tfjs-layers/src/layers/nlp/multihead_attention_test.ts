@@ -240,7 +240,8 @@ describe('MultiHeadAttention', () => {
   function testHighDimAttention({
     testcaseName, qDims, vDims, maskDims, attentionAxes,
   }: HighDimAttentionArgs) {
-    describeMathCPU(`${testcaseName} high dim attention`, () => {
+    describeMathCPU('High dimensions', () => {
+    it(`${testcaseName} high dim attention`, () => {
       const testLayer = new MultiHeadAttention({
         numHeads: 2, keyDim: 2, attentionAxes,
       });
@@ -270,6 +271,7 @@ describe('MultiHeadAttention', () => {
         query, {value, attentionMask: nullMaskData});
 
       expectTensorsNotClose(outputWithMask, outputWithNullMask);
+    });
     });
   }
   params = [
