@@ -35,7 +35,6 @@ import { Softmax } from '../advanced_activations';
 import { Dropout } from '../core';
 import { EinsumDense } from './einsum_dense';
 import { arraysEqual } from '@tensorflow/tfjs-core/dist/util_base';
-import { deserializeKerasObject } from 'tfjs-layers/src/utils/generic_utils';
 
 const _CHR_IDX = 'abcdefghijklmnopqrstuvwxyz'.split('');
 /**
@@ -508,15 +507,10 @@ export class MultiHeadAttention extends Layer {
     // Create new clone of kernel/bias initializer, so that we don't reuse
     // the initializer instance, which could lead to same init value since
     // initializer is stateless.
-    const kernelInitializer = deserializeKerasObject(
-      this.kernelInitializer.getConfig(),
-      serialization.SerializationMap.getMap().classNameMap,
-      {}, 'kernel_initalizer'
-    );
-    // const kernelInitializer = getInitializer({
-    //   className: this.kernelInitializer.getClassName(),
-    //   config: this.kernelInitializer.getConfig(),
-    // });
+    const kernelInitializer = getInitializer({
+      className: this.kernelInitializer.getClassName(),
+      config: this.kernelInitializer.getConfig(),
+    });
     const biasInitializer = getInitializer({
       className: this.biasInitializer.getClassName(),
       config: this.biasInitializer.getConfig(),
