@@ -30,50 +30,52 @@ import { describeMathCPU, expectTensorsNotClose } from '../../utils/test_utils';
 describe('MultiHeadAttention', () => {
   interface TestArgs {};
 
-  interface NonMaskedAttentionArgs extends TestArgs {
-    testcaseName: string;
-    valueDim: number;
-    outputShape: Shape;
-    outputDims: Shape;
-  }
-  /**
-   * Test that the attention layer can be created without a mask tensor.
-   */
-  function testNonMaskedAttention(
-    {testcaseName, valueDim, outputShape, outputDims}: NonMaskedAttentionArgs
-  ) {
-    it(`${testcaseName} non masked attention`, () => {
-      const testLayer = new MultiHeadAttention({
-        numHeads: 12,
-        keyDim: 64,
-        valueDim,
-        outputShape,
-      });
-      // Create a 3-dimensional input (the first dimension is implicit).
-      const query = input({shape: [40, 80]});
-      const value = input({shape: [20, 80]});
-      const output = testLayer.apply(query, {value}) as Tensor;
-      expect(output.shape).toEqual([null].concat(outputDims));
-    });
-  }
-
-  let params: TestArgs[] = [
-    {
-      testcaseName: 'key value same proj',
-      valueDim: null,
-      outputShape: null,
-      outputDims: [40, 80],
-    },
-    {
-      testcaseName: 'key value different proj',
-      valueDim: 32,
-      outputShape: [60],
-      outputDims: [40, 60],
+  describe('Non Masked Attention', () => {
+    interface NonMaskedAttentionArgs extends TestArgs {
+      testcaseName: string;
+      valueDim: number;
+      outputShape: Shape;
+      outputDims: Shape;
     }
-  ];
-  for (const param of params) {
-    testNonMaskedAttention(param as NonMaskedAttentionArgs);
-  }
+    /**
+     * Test that the attention layer can be created without a mask tensor.
+     */
+    function testNonMaskedAttention(
+      {testcaseName, valueDim, outputShape, outputDims}: NonMaskedAttentionArgs
+    ) {
+      it(`${testcaseName} non masked attention`, () => {
+        const testLayer = new MultiHeadAttention({
+          numHeads: 12,
+          keyDim: 64,
+          valueDim,
+          outputShape,
+        });
+        // Create a 3-dimensional input (the first dimension is implicit).
+        const query = input({shape: [40, 80]});
+        const value = input({shape: [20, 80]});
+        const output = testLayer.apply(query, {value}) as Tensor;
+        expect(output.shape).toEqual([null].concat(outputDims));
+      });
+    }
+
+    const params: TestArgs[] = [
+      {
+        testcaseName: 'key value same proj',
+        valueDim: null,
+        outputShape: null,
+        outputDims: [40, 80],
+      },
+      {
+        testcaseName: 'key value different proj',
+        valueDim: 32,
+        outputShape: [60],
+        outputDims: [40, 60],
+      }
+    ];
+    for (const param of params) {
+      testNonMaskedAttention(param as NonMaskedAttentionArgs);
+    }
+  });
 
   // Test with one input (self-attenntion) and no mask tensor.
   it('non masked self attention', () => {
@@ -275,7 +277,7 @@ describe('MultiHeadAttention', () => {
         expectTensorsNotClose(outputWithMask, outputWithNullMask);
       });
     }
-    params = [
+    const params = [
       {
         testcaseName: '4d_inputs_1freebatch_mask2',
         qDims: [3, 4],
