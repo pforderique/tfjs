@@ -342,9 +342,9 @@ describe('MultiHeadAttention', () => {
           maskedQuery, {value: maskedValue, useCausalMask: true});
 
         let mask = tensor([
-          [Array<boolean[]>(3).fill([true, true, false])].concat(
+          Array<boolean[]>(3).fill([true, true, false]).concat(
             Array<boolean[]>(2).fill([false, false, false])),
-          [Array<boolean[]>(5).fill([true, false, false])],
+          Array<boolean[]>(5).fill([true, false, false]),
           [[true, true, true]].concat(
             Array<boolean[]>(4).fill([false, false, false]))
         ]);
