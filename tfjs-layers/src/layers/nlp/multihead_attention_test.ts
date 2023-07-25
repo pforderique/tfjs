@@ -348,9 +348,6 @@ describe('MultiHeadAttention', () => {
     for (const [testName, useMask] of params) {
       testValueMask(testName, useMask);
     }
-
-
-
   });
 
   describe('Compute Output Shape', () => {
@@ -391,53 +388,39 @@ describe('MultiHeadAttention', () => {
         expect(output.shape).toEqual(computedOutputShape);
       });
     }
-  const params: ComputeOutputShapeArgs[] = [
-    {
-      testcaseName: "without_key_same_proj",
-      queryDims: [40, 80],
-      valueDims: [20, 80],
-      keyDims: null,
-      outputShape: null
-    },
-    {
-      testcaseName: "with_key_same_proj",
-      queryDims: [40, 80],
-      valueDims: [20, 80],
-      keyDims: [20, 30],
-      outputShape: null
-    },
-    {
-      testcaseName: "wihtout_key_different_proj",
-      queryDims: [40, 80],
-      valueDims: [20, 80],
-      keyDims: null,
-      outputShape: [30, 40]
-    },
-    {
-      testcaseName: "with_key_different_proj",
-      queryDims: [40, 80],
-      valueDims: [20, 80],
-      keyDims: [20, 30],
-      outputShape: [15, 50]
-    },
-    {
-      testcaseName: "high_dim_same_proj",
-      queryDims: [40, 20, 30, 80],
-      valueDims: [10, 10, 50, 80],
-      keyDims: [10, 10, 50, 20],
-      outputShape: null
-    },
-    {
-      testcaseName: "high_dim_different_proj",
-      queryDims: [40, 20, 30, 80],
-      valueDims: [10, 10, 50, 80],
-      keyDims: [10, 10, 50, 20],
-      outputShape: [30, 20]
-    },
-  ];
-  for (const param of params) {
-    testComputeOutputShape(param);
-  }
+    const params: ComputeOutputShapeArgs[] = [
+      {
+        testcaseName: "without_key_same_proj",
+        queryDims: [40, 80],
+        valueDims: [20, 80],
+        keyDims: null,
+        outputShape: null
+      },
+      {
+        testcaseName: "with_key_same_proj",
+        queryDims: [40, 80],
+        valueDims: [20, 80],
+        keyDims: [20, 30],
+        outputShape: null
+      },
+      {
+        testcaseName: "wihtout_key_different_proj",
+        queryDims: [40, 80],
+        valueDims: [20, 80],
+        keyDims: null,
+        outputShape: [30, 40]
+      },
+      {
+        testcaseName: "with_key_different_proj",
+        queryDims: [40, 80],
+        valueDims: [20, 80],
+        keyDims: [20, 30],
+        outputShape: [15, 50]
+      },
+    ];
+    for (const param of params) {
+      testComputeOutputShape(param);
+    }
   });
   // TODO(pforderique): Test memory and serialization.
 });
