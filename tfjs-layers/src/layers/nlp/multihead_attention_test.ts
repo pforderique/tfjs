@@ -454,6 +454,18 @@ describe('MultiHeadAttention', () => {
         valueShape: [null, 20, 70],
         keyShape: null
       },
+      {
+        testcaseName: "key_value_dim_mismatch",
+        queryShape: [null, 40, 80],
+        valueShape: [null, 20, 80],
+        keyShape: [null, 10, 70],
+      },
+      {
+        testcaseName:"key_value_dim_mismatch_high_dim",
+        queryShape: [null, 40, 20, 30, 80],
+        valueShape: [null, 10, 10, 50, 80],
+        keyShape: [null, 10, 15, 50, 20],
+      },
     ];
     for (const param of params) {
       testComputeOutputShapeError(param);
