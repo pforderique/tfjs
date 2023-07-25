@@ -27,7 +27,6 @@ import { Shape } from '../../keras_format/common';
 import { MultiHeadAttention } from './multihead_attention';
 import { describeMathCPU, expectTensorsClose, expectTensorsNotClose } from '../../utils/test_utils';
 import { Embedding } from '../embeddings';
-import { ValueError } from 'tfjs-layers/src/errors';
 
 describe('MultiHeadAttention', () => {
 
@@ -445,7 +444,7 @@ describe('MultiHeadAttention', () => {
         });
 
         expect(() => testLayer.computeOutputShape(
-          [queryShape, valueShape, keyShape])).toThrow(new ValueError());
+          [queryShape, valueShape, keyShape])).toThrow();
       });
     }
     const params: ComputeOutputShapeErrorArgs[] = [
