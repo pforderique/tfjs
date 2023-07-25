@@ -19,7 +19,7 @@
  * Unit Tests for MultiHeadAttention layer.
  */
 
-import { Tensor, ones, randomNormal, randomUniform, randomUniformInt, tensor, tensor2d } from '@tensorflow/tfjs-core';
+import { Tensor, ones, randomUniform, randomUniformInt, tensor, tensor2d } from '@tensorflow/tfjs-core';
 
 import { TruncatedNormal } from '../../initializers';
 import { input } from '../../exports';
@@ -165,7 +165,8 @@ describe('MultiHeadAttention', () => {
     }
   });
 
-  // Test with a specified initializer
+  // Test with a specified initializer.
+  // TODO(pforderique): Debug why the same initializer is being returned.
   it('initializers', () => {
     const testLayer = new MultiHeadAttention({
       numHeads: 12,
@@ -205,7 +206,7 @@ describe('MultiHeadAttention', () => {
     function testHighDimAttention({
       testcaseName, qDims, vDims, maskDims, attentionAxes,
     }: HighDimAttentionArgs) {
-      it(`${testcaseName} high dim attention`, () => {
+      it(testcaseName, () => {
         const testLayer = new MultiHeadAttention({
           numHeads: 2, keyDim: 2, attentionAxes,
         });
@@ -301,33 +302,12 @@ describe('MultiHeadAttention', () => {
     expectTensorsNotClose(trainOut, testOut);
   });
 
-  // Test automatic propagation of the query's mask.
-  it('query mask propogation', () => {
-    const testLayer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
-    expect(testLayer.supportsMasking).toBeTrue();
-
-    const query = tensor2d([[1, 2, 3, 0, 0], [3, 3, 1, 1, 2], [1, 0, 0, 0, 0]]);
-
-    const embeddingLayer = new Embedding(
-      {inputDim: 4, outputDim: 8, maskZero: true});
-    const maskedQuery = embeddingLayer.apply(query) as Tensor;
-    const value = randomNormal([3, 3, 8]);
-
-    const output = testLayer.call(maskedQuery, {value});
-
-    // console.log('embedding', embeddingLayer.computeMask(query).dataSync())
-    // console.log('MHA', (testLayer.computeMask(maskedQuery, maskedQuery) as Tensor).dataSync())
-    // expectTensorsClose(embeddingLayer.computeMask(query), testLayer.computeMask(maskedQuery, maskedQuery) as Tensor);
-    // TODO(pforderique): Ask about similar attrbiute to _keras_mask
-    console.log('ignore', output);
-  });
-
   describe('Casual Mask Value', () => {
     /**
      * Test that the value and causal masks are taken into account.
      */
-    function testValueMask(testName: string, useCausalMask: boolean) {
-      it(`${testName}`, () => {
+    function testValueMask(testcaseName: string, useCausalMask: boolean) {
+      it(testcaseName, () => {
         const testLayer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
         const query = tensor2d([
           [1, 2, 3, 0, 0], [3, 3, 1, 1, 2], [1, 0, 0, 0, 0]
@@ -373,17 +353,91 @@ describe('MultiHeadAttention', () => {
 
   });
 
-  // Test that the implicit and explicit masks are cast to bool.
-  it('masks are cast to bool', () => {
-    const testLayer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
-    expect(testLayer.supportsMasking).toBeTrue();
+  describe('Compute Output Shape', () => {
+    interface ComputeOutputShapeArgs {
+      testcaseName: string;
+      queryDims: Shape;
+      valueDims: Shape;
+      keyDims?: Shape;
+      outputShape: Shape;
+    };
+    /**
+     * Test computed shape is equal to the layer output's shape.
+     */
+    function testComputeOutputShape({
+      testcaseName, queryDims, valueDims, keyDims, outputShape,
+    }: ComputeOutputShapeArgs) {
+      it(testcaseName, () => {
+        const testLayer = new MultiHeadAttention({
+          numHeads: 2,
+          keyDim: 2,
+          valueDim: 2,
+          outputShape
+        });
+        const batchSize = 1;
 
-    const query = tensor2d([[1, 2, 3, 0, 0], [3, 3, 1, 1, 2], [1, 0, 0, 0, 0]]);
-    const maskedQuery = new Embedding(
-      {inputDim: 4, outputDim: 8, maskZero: true}).apply(query) as Tensor;
-      // TODO(pforderique): Ask about similar attrbiute to _keras_mask
+        const queryShape = [batchSize].concat(queryDims);
+        const valueShape = [batchSize].concat(valueDims);
+        const keyShape = keyDims ? [batchSize].concat(keyDims) : null;
 
-    console.log('ignore', maskedQuery);
+        const query = randomUniform(queryShape);
+        const value = randomUniform(valueShape);
+        const key = keyShape ? randomUniform(keyShape) : null;
+
+        const output = testLayer.call(query, {value, key});
+        const computedOutputShape = testLayer.computeOutputShape(
+          [queryShape, valueShape, keyShape]);
+
+        expect(output.shape).toEqual(computedOutputShape);
+      });
+    }
+  const params: ComputeOutputShapeArgs[] = [
+    {
+      testcaseName: "without_key_same_proj",
+      queryDims: [40, 80],
+      valueDims: [20, 80],
+      keyDims: null,
+      outputShape: null
+    },
+    {
+      testcaseName: "with_key_same_proj",
+      queryDims: [40, 80],
+      valueDims: [20, 80],
+      keyDims: [20, 30],
+      outputShape: null
+    },
+    {
+      testcaseName: "wihtout_key_different_proj",
+      queryDims: [40, 80],
+      valueDims: [20, 80],
+      keyDims: null,
+      outputShape: [30, 40]
+    },
+    {
+      testcaseName: "with_key_different_proj",
+      queryDims: [40, 80],
+      valueDims: [20, 80],
+      keyDims: [20, 30],
+      outputShape: [15, 50]
+    },
+    {
+      testcaseName: "high_dim_same_proj",
+      queryDims: [40, 20, 30, 80],
+      valueDims: [10, 10, 50, 80],
+      keyDims: [10, 10, 50, 20],
+      outputShape: null
+    },
+    {
+      testcaseName: "high_dim_different_proj",
+      queryDims: [40, 20, 30, 80],
+      valueDims: [10, 10, 50, 80],
+      keyDims: [10, 10, 50, 20],
+      outputShape: [30, 20]
+    },
+  ];
+  for (const param of params) {
+    testComputeOutputShape(param);
+  }
   });
   // TODO(pforderique): Test memory and serialization.
 });
