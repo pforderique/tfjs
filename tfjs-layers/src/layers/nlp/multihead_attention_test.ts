@@ -27,6 +27,7 @@ import { Shape } from '../../keras_format/common';
 import { MultiHeadAttention } from './multihead_attention';
 import { describeMathCPU, expectTensorsClose, expectTensorsNotClose } from '../../utils/test_utils';
 import { Embedding } from '../embeddings';
+import { ValueError } from 'tfjs-layers/src/errors';
 
 describe('MultiHeadAttention', () => {
 
@@ -420,6 +421,43 @@ describe('MultiHeadAttention', () => {
     ];
     for (const param of params) {
       testComputeOutputShape(param);
+    }
+  });
+
+  describe('Compute Output Shape Raises Error', () => {
+    interface ComputeOutputShapeErrorArgs {
+      testcaseName: string;
+      queryShape: Shape;
+      valueShape: Shape;
+      keyShape?: Shape;
+    };
+    /**
+     * Test dimension mismatches.
+     */
+    function testComputeOutputShapeError({
+      testcaseName, queryShape, valueShape, keyShape,
+    }: ComputeOutputShapeErrorArgs) {
+      it(testcaseName, () => {
+        const testLayer = new MultiHeadAttention({
+          numHeads: 4,
+          keyDim: 2,
+          valueDim: 2,
+        });
+
+        expect(() => testLayer.computeOutputShape(
+          [queryShape, valueShape, keyShape])).toThrow(new ValueError());
+      });
+    }
+    const params: ComputeOutputShapeErrorArgs[] = [
+      {
+        testcaseName: "query_value_dim_mismatch",
+        queryShape: [null, 40, 80],
+        valueShape: [null, 20, 70],
+        keyShape: null
+      },
+    ];
+    for (const param of params) {
+      testComputeOutputShapeError(param);
     }
   });
   // TODO(pforderique): Test memory and serialization.
