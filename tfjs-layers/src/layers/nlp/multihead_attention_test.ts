@@ -77,7 +77,7 @@ describe('MultiHeadAttention', () => {
     }
   });
 
-  // Test with one input (self-attenntion) and no mask tensor.
+  // Test with one input (self-attention) and no mask tensor.
   it('non masked self attention', () => {
     const testLayer = new MultiHeadAttention({numHeads: 12, keyDim: 64});
     // Create a 3-dimensional input (the first dimension is implicit).
@@ -116,7 +116,7 @@ describe('MultiHeadAttention', () => {
      * Test with a mask tensor.
      */
     function testMaskedAttention({testcaseName, useBias}: MaskedAttentionArgs) {
-      it(`${testcaseName} masked attention`, () => {
+      it(`${testcaseName}`, () => {
         const testLayer = new MultiHeadAttention({
           numHeads: 2,
           keyDim: 2,
@@ -124,8 +124,8 @@ describe('MultiHeadAttention', () => {
         });
         // Create a 3-dimensional input (the first dimension is implicit).
         const batchSize = 3;
-        const query = randomUniform([4, 8]);
-        const value = randomUniform([2, 8]);
+        const query = randomUniform([batchSize, 4, 8]);
+        const value = randomUniform([batchSize, 2, 8]);
 
         // Invoke the data with a random set of mask data. This should mask at
         // least one element.
@@ -307,21 +307,27 @@ describe('MultiHeadAttention', () => {
     expect(testLayer.supportsMasking).toBeTrue();
 
     const query = tensor2d([[1, 2, 3, 0, 0], [3, 3, 1, 1, 2], [1, 0, 0, 0, 0]]);
-    const maskedQuery = new Embedding(
-      {inputDim: 4, outputDim: 8, maskZero: true}).apply(query) as Tensor;
+
+    const embeddingLayer = new Embedding(
+      {inputDim: 4, outputDim: 8, maskZero: true});
+    const maskedQuery = embeddingLayer.apply(query) as Tensor;
     const value = randomNormal([3, 3, 8]);
 
     const output = testLayer.call(maskedQuery, {value});
+
+    // console.log('embedding', embeddingLayer.computeMask(query).dataSync())
+    // console.log('MHA', (testLayer.computeMask(maskedQuery, maskedQuery) as Tensor).dataSync())
+    // expectTensorsClose(embeddingLayer.computeMask(query), testLayer.computeMask(maskedQuery, maskedQuery) as Tensor);
     // TODO(pforderique): Ask about similar attrbiute to _keras_mask
     console.log('ignore', output);
   });
 
-  describe('Casual Mask value', () => {
+  describe('Casual Mask Value', () => {
     /**
      * Test that the value and causal masks are taken into account.
      */
     function testValueMask(testName: string, useCausalMask: boolean) {
-      it(`${testName} casual mask`, () => {
+      it(`${testName}`, () => {
         const testLayer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
         const query = tensor2d([
           [1, 2, 3, 0, 0], [3, 3, 1, 1, 2], [1, 0, 0, 0, 0]

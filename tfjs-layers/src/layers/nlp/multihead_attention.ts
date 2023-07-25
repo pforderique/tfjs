@@ -791,7 +791,7 @@ export class MultiHeadAttention extends Layer {
     if (useCausalMask) {
       // the shape of the causal mask is [1, T, S]
       const mask = this.computeCasualMask(query, value);
-      autoMask = autoMask ? mask : autoMask.logicalAnd(mask);
+      autoMask = mask;
     }
 
     if (autoMask != null) {
@@ -834,7 +834,6 @@ export class MultiHeadAttention extends Layer {
    *    [queryShape, valueShape, keyShape]. If no keyShape provided, valueShape
    *    is assumed as the keyShape.
    */
-  // TODO(pforderique): Fix error here (when getting called from apply()).
   override computeOutputShape(inputShapes: [Shape, Shape, Shape|null]): Shape {
     let [queryShape, valueShape, keyShape] = inputShapes;
     if (keyShape == null) {
