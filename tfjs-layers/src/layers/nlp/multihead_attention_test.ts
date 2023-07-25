@@ -19,13 +19,14 @@
  * Unit Tests for MultiHeadAttention layer.
  */
 
-import { Tensor, ones, randomUniform, randomUniformInt } from '@tensorflow/tfjs-core';
+import { Tensor, ones, randomNormal, randomUniform, randomUniformInt, tensor, tensor2d } from '@tensorflow/tfjs-core';
 
 import { TruncatedNormal } from '../../initializers';
 import { input } from '../../exports';
 import { Shape } from '../../keras_format/common';
 import { MultiHeadAttention } from './multihead_attention';
-import { describeMathCPU, expectTensorsNotClose } from '../../utils/test_utils';
+import { describeMathCPU, expectTensorsClose, expectTensorsNotClose } from '../../utils/test_utils';
+import { Embedding } from '../embeddings';
 
 describe('MultiHeadAttention', () => {
 
@@ -190,8 +191,6 @@ describe('MultiHeadAttention', () => {
     // expectTensorsNotClose(queryKernel, outputKernel);
   });
 
-  // TODO(pforderique): Change to regular `describe` once GPU supports math for
-  // rank 7 tensors is supported.
   describeMathCPU('High Dimensional Attention', () => {
     interface HighDimAttentionArgs {
       testcaseName: string;
@@ -286,5 +285,68 @@ describe('MultiHeadAttention', () => {
       testHighDimAttention(param);
     }
   });
+
+  it('dropout', () => {
+    const testLayer = new MultiHeadAttention({
+      numHeads: 2,
+      keyDim: 2,
+      dropout: 0.5,
+    });
+    const fromData = ones([32, 4, 8]);
+    const toData = ones([32, 2, 8]);
+
+    const trainOut = testLayer.call(fromData, {value: toData, training: true});
+    const testOut = testLayer.call(fromData, {value: toData, training: false});
+
+    expectTensorsNotClose(trainOut, testOut);
+  });
+
+  // Test automatic propagation of the query's mask.
+  it('query mask propogation', () => {
+    const testLayer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
+    expect(testLayer.supportsMasking).toBeTrue();
+
+    const query = tensor2d([[1, 2, 3, 0, 0], [3, 3, 1, 1, 2], [1, 0, 0, 0, 0]]);
+    const maskedQuery = new Embedding(
+      {inputDim: 4, outputDim: 8, maskZero: true}).apply(query) as Tensor;
+    const value = randomNormal([3, 3, 8]);
+
+    const output = testLayer.call(maskedQuery, {value});
+    // TODO(pforderique): Ask about similar attrbiute to _keras_mask
+    console.log('ignore', output);
+  });
+
+  describe('Casual Mask value', () => {
+    function testValueMask(testName: string, useCausalMask: boolean) {
+      const testLayer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
+      const query = tensor2d([
+        [1, 2, 3, 0, 0], [3, 3, 1, 1, 2], [1, 0, 0, 0, 0]
+      ]);
+      const maskedQuery = new Embedding(
+        {inputDim: 4, outputDim: 8, maskZero: true}).apply(query) as Tensor;
+      const value = tensor2d([[5, 4, 0], [3, 0, 0], [2, 1, 1]]);
+      const maskedValue = new Embedding(
+        {inputDim: 6, outputDim: 8, maskZero: true}).apply(value) as Tensor;
+
+      const output = testLayer.call(
+        maskedQuery, {value: maskedValue, useCausalMask: true});
+
+      let mask = tensor([
+        // Array<Number[]>(3)
+        // later lol.
+      ]);
+      if (useCausalMask) {
+        mask = mask.logicalAnd(tensor([
+          // later lol.
+        ]));
+      }
+
+      const outputWithManualMask = testLayer.call(
+        maskedQuery, {value: maskedValue, attentionMask: mask});
+
+      expectTensorsClose(output, outputWithManualMask);
+    }
+  });
+
   // TODO(pforderique): Test memory and serialization.
 });
