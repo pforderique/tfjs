@@ -317,36 +317,63 @@ describe('MultiHeadAttention', () => {
   });
 
   describe('Casual Mask value', () => {
+    /**
+     * Test that the value and causal masks are taken into account.
+     */
     function testValueMask(testName: string, useCausalMask: boolean) {
-      const testLayer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
-      const query = tensor2d([
-        [1, 2, 3, 0, 0], [3, 3, 1, 1, 2], [1, 0, 0, 0, 0]
-      ]);
-      const maskedQuery = new Embedding(
-        {inputDim: 4, outputDim: 8, maskZero: true}).apply(query) as Tensor;
-      const value = tensor2d([[5, 4, 0], [3, 0, 0], [2, 1, 1]]);
-      const maskedValue = new Embedding(
-        {inputDim: 6, outputDim: 8, maskZero: true}).apply(value) as Tensor;
+      it(`${testName} casual mask`, () => {
+        const testLayer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
+        const query = tensor2d([
+          [1, 2, 3, 0, 0], [3, 3, 1, 1, 2], [1, 0, 0, 0, 0]
+        ]);
+        const maskedQuery = new Embedding(
+          {inputDim: 4, outputDim: 8, maskZero: true}).apply(query) as Tensor;
+        const value = tensor2d([[5, 4, 0], [3, 0, 0], [2, 1, 1]]);
+        const maskedValue = new Embedding(
+          {inputDim: 6, outputDim: 8, maskZero: true}).apply(value) as Tensor;
 
-      const output = testLayer.call(
-        maskedQuery, {value: maskedValue, useCausalMask: true});
+        const output = testLayer.call(
+          maskedQuery, {value: maskedValue, useCausalMask: true});
 
-      let mask = tensor([
-        // Array<Number[]>(3)
-        // later lol.
-      ]);
-      if (useCausalMask) {
-        mask = mask.logicalAnd(tensor([
+        let mask = tensor([
+          // Array<Number[]>(3)
           // later lol.
-        ]));
-      }
+        ]);
+        if (useCausalMask) {
+          mask = mask.logicalAnd(tensor([
+            // later lol.
+          ]));
+        }
 
-      const outputWithManualMask = testLayer.call(
-        maskedQuery, {value: maskedValue, attentionMask: mask});
+        const outputWithManualMask = testLayer.call(
+          maskedQuery, {value: maskedValue, attentionMask: mask});
 
-      expectTensorsClose(output, outputWithManualMask);
+        expectTensorsClose(output, outputWithManualMask);
+      });
     }
+
+    const params: [string, boolean][] = [
+      ['casual', true], ['not_casual', false]
+    ];
+    for (const [testName, useMask] of params) {
+      testValueMask(testName, useMask);
+    }
+
+
+
   });
 
+  // Test that the implicit and explicit masks are cast to bool.
+  it('masks are cast to bool', () => {
+    const testLayer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
+    expect(testLayer.supportsMasking).toBeTrue();
+
+    const query = tensor2d([[1, 2, 3, 0, 0], [3, 3, 1, 1, 2], [1, 0, 0, 0, 0]]);
+    const maskedQuery = new Embedding(
+      {inputDim: 4, outputDim: 8, maskZero: true}).apply(query) as Tensor;
+      // TODO(pforderique): Ask about similar attrbiute to _keras_mask
+
+    console.log('ignore', maskedQuery);
+  });
   // TODO(pforderique): Test memory and serialization.
 });
