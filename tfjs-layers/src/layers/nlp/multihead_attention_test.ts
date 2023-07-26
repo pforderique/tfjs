@@ -473,3 +473,29 @@ describe('MultiHeadAttention', () => {
   });
   // TODO(pforderique): Test memory and serialization.
 });
+
+class SubclassAttention extends MultiHeadAttention {
+  protected override buildAttention(qkvRank: number) {}
+
+  protected override computeAttention(
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
+    attentionMask?: Tensor,
+    training?: boolean
+  ): [Tensor, Tensor] {
+    return [value, null];
+  }
+}
+
+describe('AttentionSubclass', () => {
+  // Test with a specified initializer.
+  it('initializer', () => {
+    const testLayer = new SubclassAttention({numHeads: 12, keyDim: 64});
+    // Create a 3-dimensional input.
+    const query = ones([1, 40, 80]);
+    const output = testLayer.call(query, {value: query});
+
+    expect(output.shape).toEqual([1, 40, 80]);
+  })
+});

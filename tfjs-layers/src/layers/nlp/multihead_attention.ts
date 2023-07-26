@@ -585,7 +585,7 @@ export class MultiHeadAttention extends Layer {
    *
    * @param rank The rank of query, key, value tensors.
    */
-  private buildAttention(rank: number) {
+  protected buildAttention(rank: number) {
     if (this.attentionAxes == null) {
       this.attentionAxes = [];
       for (let i = 1; i < rank - 2; i++) {
@@ -645,7 +645,7 @@ export class MultiHeadAttention extends Layer {
    * @returns attentionOutput: Multi-headed outputs of attention computation.
    * @returns attentionScores: Multi-headed attention weights.
    */
-  private computeAttention(
+  protected computeAttention(
     query: Tensor,
     key: Tensor,
     value: Tensor,
