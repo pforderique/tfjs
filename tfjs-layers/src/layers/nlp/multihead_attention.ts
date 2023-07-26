@@ -329,31 +329,31 @@ export class MultiHeadAttention extends Layer {
   /** @nocollapse */
   static readonly className = 'MultiHeadAttention';
 
-  private readonly numHeads: number;
-  private readonly keyDim: number;
-  private readonly valueDim: number;
-  private readonly dropout: number;
-  private readonly useBias: boolean;
-  private readonly _outputShape: Shape;
-  private readonly kernelInitializer: Initializer;
-  private readonly biasInitializer: Initializer;
-  private readonly kernelRegularizer: Regularizer;
-  private readonly biasRegularizer: Regularizer;
-  private readonly kernelConstraint: Constraint;
-  private readonly biasConstraint: Constraint;
-  private dotProductEquation: string;
-  private combineEquation: string;
-  private attentionAxes: number[];
-  private builtFromSignature: boolean;
-  private softmax: Softmax;
-  private dropoutLayer: Dropout;
-  private queryShape: Shape;
-  private keyShape: Shape;
-  private valueShape: Shape;
-  private queryDense: EinsumDense;
-  private keyDense: EinsumDense;
-  private valueDense: EinsumDense;
-  private outputDense: EinsumDense;
+  protected readonly numHeads: number;
+  protected readonly keyDim: number;
+  protected readonly valueDim: number;
+  protected readonly dropout: number;
+  protected readonly useBias: boolean;
+  protected readonly _outputShape: Shape;
+  protected readonly kernelInitializer: Initializer;
+  protected readonly biasInitializer: Initializer;
+  protected readonly kernelRegularizer: Regularizer;
+  protected readonly biasRegularizer: Regularizer;
+  protected readonly kernelConstraint: Constraint;
+  protected readonly biasConstraint: Constraint;
+  protected dotProductEquation: string;
+  protected combineEquation: string;
+  protected attentionAxes: number[];
+  protected builtFromSignature: boolean;
+  protected softmax: Softmax;
+  protected dropoutLayer: Dropout;
+  protected queryShape: Shape;
+  protected keyShape: Shape;
+  protected valueShape: Shape;
+  protected queryDense: EinsumDense;
+  protected keyDense: EinsumDense;
+  protected valueDense: EinsumDense;
+  protected outputDense: EinsumDense;
 
   constructor(args: MultiHeadAttentionArgs) {
     super(args);
@@ -468,7 +468,7 @@ export class MultiHeadAttention extends Layer {
    *
    * Once the method is called, this.builtFromSignature will be set to true.
    */
-  private buildFromSignature(
+  protected buildFromSignature(
     queryShape: Shape,
     valueShape: Shape,
     keyShape?: Shape
@@ -622,7 +622,7 @@ export class MultiHeadAttention extends Layer {
     this.dropoutLayer = new Dropout({rate: this.dropout});
   }
 
-  private maskedSoftmax(
+  protected maskedSoftmax(
     attentionScores: Tensor, attentionMask?: Tensor
   ): Tensor {
     return tidy(() => {

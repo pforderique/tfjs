@@ -20,10 +20,10 @@
  */
 
 /* Original source: keras_nlp/layers/modeling/cached_multi_head_attention.py */
-import { Tensor, Tensor1D, Tensor2D, serialization } from '@tensorflow/tfjs-core';
+import { Tensor, cast, einsum, mul, reciprocal, serialization, sqrt, stack, tensor } from '@tensorflow/tfjs-core';
 
+import { ValueError } from '../../../errors';
 import { MultiHeadAttention } from '../multihead_attention';
-import { NotImplementedError } from '../../../errors';
 
 export declare interface CachedMultiHeadAttentionOptions {
   /**
@@ -69,7 +69,7 @@ export declare interface CachedMultiHeadAttentionOptions {
    * generation). If `cacheUpdateIndex=null` while `cache` is set, the cache
    * will not be updated.
    */
-  cacheUpdateIndex?: number|Tensor;
+  cacheUpdateIndex?: number;
 }
 
 /**
@@ -106,7 +106,7 @@ export class CachedMultiHeadAttention extends MultiHeadAttention {
 
   override call(
     query: Tensor, kwargs: CachedMultiHeadAttentionOptions
-  ): Tensor|Tensor2D {
+  ): Tensor {
     return this.callAndReturnCache(query, kwargs)[0];
   }
 
@@ -114,9 +114,68 @@ export class CachedMultiHeadAttention extends MultiHeadAttention {
    * Exactly like `call` except also returns the updated cache.
    */
   callAndReturnCache(
-    query: Tensor, kwargs: CachedMultiHeadAttentionOptions
-  ): [Tensor1D|Tensor2D, Tensor1D|Tensor2D] {
-    throw new NotImplementedError(`Not implemented yet.`);
+    query: Tensor,
+    {
+      value,
+      key,
+      attentionMask,
+      cache,
+      cacheUpdateIndex
+    } : CachedMultiHeadAttentionOptions
+  ): [Tensor, Tensor] {
+    if (!this.builtFromSignature) {
+      this.buildFromSignature(
+        query.shape, value.shape, key ? key.shape : null);
+    }
+    if (key == null) {
+      key = value;
+    }
+
+    query = this.queryDense.apply(query) as Tensor;
+    // If cache is not `null`, we will use the cache to compute the final key
+    // and value tensors. If `cacheUpdateIndex` is not `null`, we will first
+    // update the cache before use. To do this, we first call the
+    // `_keyDense` and `_valueDense` layers, and copy the outputs into the
+    // cache at the specified index. `cache = null` handles the training
+    // case, where we don't use the cache at all.
+    if (cache != null) {
+      // TODO(pforderique): Fix these slices!
+      const keyCache = cache.slice(0);
+      const valueCache = value.slice(0);
+      if (cacheUpdateIndex == null) {
+        key = keyCache;
+        value = valueCache;
+      } else {
+        // TODO(pforderique): Replace with real implementation!
+        const sliceUpdate =
+          (a: Tensor, start: number[], u: Tensor) => tensor([]);
+        const keyUpdate = this.keyDense.apply(key) as Tensor;
+        const valueUpdate = this.valueDense.apply(value) as Tensor;
+        const start = [0, cacheUpdateIndex, 0, 0];
+        key = sliceUpdate(keyCache, start, keyUpdate);
+        value = sliceUpdate(valueCache, start, valueUpdate);
+        cache = stack([key, value], 1);
+      }
+    } else {
+      if (cacheUpdateIndex != null) {
+        throw new ValueError(
+          '`cacheUpdateIndex` should not be set if `cache` is `null`. ' +
+          `Received: cache=${cache}, cacheUpdateIndex=${cacheUpdateIndex}`
+        );
+      }
+      key = this.keyDense.apply(key) as Tensor;
+      value = this.valueDense.apply(value) as Tensor;
+    }
+
+    query = mul(query, reciprocal(sqrt(cast(this.keyDim, query.dtype))));
+    let attentionScores = einsum(this.dotProductEquation, key, query);
+    attentionScores = this.maskedSoftmax(attentionScores, attentionMask);
+    attentionScores = this.dropoutLayer.apply(attentionScores) as Tensor;
+
+    let attentionOutput = einsum(this.combineEquation, attentionScores, value);
+    attentionOutput = this.outputDense.apply(attentionOutput) as Tensor;
+
+    return [attentionOutput, cache];
   }
 }
 serialization.registerClass(CachedMultiHeadAttention);
