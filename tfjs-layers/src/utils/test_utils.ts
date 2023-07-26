@@ -57,13 +57,13 @@ export function expectTensorsClose(
  * @param t2
  */
 export function expectTensorsNotClose(
-    t1: Tensor|number[], t2: Tensor|number[], epsilon?: number) {
-  try {
-    expectTensorsClose(t1, t2, epsilon);
-  } catch (error) {
-    return;
-  }
-  throw new Error('The two values are close at all elements.');
+  t1: Tensor|number[], t2: Tensor|number[], epsilon?: number) {
+try {
+  expectTensorsClose(t1, t2, epsilon);
+} catch (error) {
+  return;
+}
+throw new Error('The two values are close at all elements.');
 }
 
 /**
