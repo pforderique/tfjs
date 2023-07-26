@@ -166,7 +166,6 @@ describe('MultiHeadAttention', () => {
   });
 
   // Test with a specified initializer.
-  // TODO(pforderique): Debug why the same initializer is being returned.
   it('initializers', () => {
     const testLayer = new MultiHeadAttention({
       numHeads: 12,
@@ -174,14 +173,13 @@ describe('MultiHeadAttention', () => {
       kernelInitializer: new TruncatedNormal({stddev: 0.02}),
     });
     const query = ones([1, 40, 80]);
-    // TODO(pforderique): Once generic i/o is supported, change to call apply().
     const output = testLayer.call(query, {value: query});
     expect(output.shape).toEqual([1, 40, 80]);
 
     // Make sure the sub layers have different kernel init value, and not
     // reusing the initializers.
     // TODO(pforderique): Debug why these kernels are the same. getInitializer
-    // is returning a new instance - not the same one...
+    // !is returning a new instance - not the same one...
     // const queryKernel = testLayer.queryDense.kernel.read();
     // const keyKernel = testLayer.keyDense.kernel.read();
     // const valueKernel = testLayer.valueDense.kernel.read();

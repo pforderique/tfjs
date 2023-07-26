@@ -422,7 +422,6 @@ export class MultiHeadAttention extends Layer {
     return config;
   }
 
-  // TODO(pforderique): Test this config serialization out.
   static override fromConfig<T extends serialization.Serializable>(
     cls: serialization.SerializableConstructor<T>,
     config: serialization.ConfigDict
