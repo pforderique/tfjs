@@ -111,7 +111,7 @@ describe('MultiHeadAttention', () => {
     interface MaskedAttentionArgs {
       testcaseName: string;
       useBias: boolean;
-    };
+    }
     /**
      * Test with a mask tensor.
      */
@@ -175,7 +175,7 @@ describe('MultiHeadAttention', () => {
     });
     const query = ones([1, 40, 80]);
     // TODO(pforderique): Once generic i/o is supported, change to call apply().
-    const output = testLayer.call(query, {value: query}) as Tensor;
+    const output = testLayer.call(query, {value: query});
     expect(output.shape).toEqual([1, 40, 80]);
 
     // Make sure the sub layers have different kernel init value, and not
@@ -199,7 +199,7 @@ describe('MultiHeadAttention', () => {
       vDims: Shape;
       maskDims: Shape;
       attentionAxes: number[];
-    };
+    }
     /**
      * Test with high dimensional inputs.
      */
@@ -342,7 +342,7 @@ describe('MultiHeadAttention', () => {
       });
     }
 
-    const params: [string, boolean][] = [
+    const params: Array<[string, boolean]> = [
       ['casual', true], ['not_casual', false]
     ];
     for (const [testName, useMask] of params) {
@@ -357,7 +357,7 @@ describe('MultiHeadAttention', () => {
       valueDims: Shape;
       keyDims?: Shape;
       outputShape: Shape;
-    };
+    }
     /**
      * Test computed shape is equal to the layer output's shape.
      */
@@ -390,28 +390,28 @@ describe('MultiHeadAttention', () => {
     }
     const params: ComputeOutputShapeArgs[] = [
       {
-        testcaseName: "without_key_same_proj",
+        testcaseName: 'without_key_same_proj',
         queryDims: [40, 80],
         valueDims: [20, 80],
         keyDims: null,
         outputShape: null
       },
       {
-        testcaseName: "with_key_same_proj",
+        testcaseName: 'with_key_same_proj',
         queryDims: [40, 80],
         valueDims: [20, 80],
         keyDims: [20, 30],
         outputShape: null
       },
       {
-        testcaseName: "wihtout_key_different_proj",
+        testcaseName: 'wihtout_key_different_proj',
         queryDims: [40, 80],
         valueDims: [20, 80],
         keyDims: null,
         outputShape: [30, 40]
       },
       {
-        testcaseName: "with_key_different_proj",
+        testcaseName: 'with_key_different_proj',
         queryDims: [40, 80],
         valueDims: [20, 80],
         keyDims: [20, 30],
@@ -429,7 +429,7 @@ describe('MultiHeadAttention', () => {
       queryShape: Shape;
       valueShape: Shape;
       keyShape?: Shape;
-    };
+    }
     /**
      * Test dimension mismatches.
      */
@@ -449,19 +449,19 @@ describe('MultiHeadAttention', () => {
     }
     const params: ComputeOutputShapeErrorArgs[] = [
       {
-        testcaseName: "query_value_dim_mismatch",
+        testcaseName: 'query_value_dim_mismatch',
         queryShape: [null, 40, 80],
         valueShape: [null, 20, 70],
         keyShape: null
       },
       {
-        testcaseName: "key_value_dim_mismatch",
+        testcaseName: 'key_value_dim_mismatch',
         queryShape: [null, 40, 80],
         valueShape: [null, 20, 80],
         keyShape: [null, 10, 70],
       },
       {
-        testcaseName:"key_value_dim_mismatch_high_dim",
+        testcaseName:'key_value_dim_mismatch_high_dim',
         queryShape: [null, 40, 20, 30, 80],
         valueShape: [null, 10, 10, 50, 80],
         keyShape: [null, 10, 15, 50, 20],
@@ -509,5 +509,5 @@ describe('AttentionSubclass', () => {
     const output = testLayer.call(query, {value: query});
 
     expect(output.shape).toEqual([1, 40, 80]);
-  })
+  });
 });

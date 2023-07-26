@@ -21,7 +21,8 @@
 
 /* Original source: keras/layers/attention/multi_head_attention.py */
 import { Tensor, einsum, linalg, mul, ones, serialization, tidy } from '@tensorflow/tfjs-core';
-import { warn } from '@tensorflow/tfjs-core/dist/log';
+// tslint:disable-next-line: no-imports-from-dist
+import { arraysEqual } from '@tensorflow/tfjs-core/dist/util_base';
 
 import { cast, expandDims } from '../../backend/tfjs_backend';
 import { Constraint, ConstraintIdentifier, getConstraint, serializeConstraint } from '../../constraints';
@@ -34,7 +35,6 @@ import { Kwargs } from '../../types';
 import { Softmax } from '../advanced_activations';
 import { Dropout } from '../core';
 import { EinsumDense } from './einsum_dense';
-import { arraysEqual } from '@tensorflow/tfjs-core/dist/util_base';
 
 const _CHR_IDX = 'abcdefghijklmnopqrstuvwxyz'.split('');
 /**
@@ -72,7 +72,7 @@ function buildAttentionEquation(
     }
   }
   let letterOffset = rank;
-  let sourceNotation = "";
+  let sourceNotation = '';
   for (let i = 0; i < rank; i++) {
     if (batchDims.includes(i) || i === rank - 1) {
       sourceNotation += targetNotationArr[i];
@@ -104,10 +104,10 @@ function buildAttentionEquation(
 function buildProjectionEquation(
   freeDims: number, boundDims: number, outputDims: number
 ): [string, string, number] {
-  let inputStr = "";
-  let kernelStr = "";
-  let outputStr = "";
-  let biasAxes = "";
+  let inputStr = '';
+  let kernelStr = '';
+  let outputStr = '';
+  let biasAxes = '';
   let letterOffset = 0;
 
   for (let i = 0; i < freeDims; i++) {
@@ -438,16 +438,16 @@ export class MultiHeadAttention extends Layer {
 
     const layer = new cls(config);
     if ([queryShape, keyShape, valueShape].includes(null)) {
-        warn(
-            "One of dimensions of the input shape is missing. It " +
-            "should have been memorized when the layer was serialized. " +
+        console.warn(
+            'One of dimensions of the input shape is missing. It ' +
+            'should have been memorized when the layer was serialized. ' +
             `${cls.toString()} is created without weights.`
-        )
+        );
     } else {
       (layer as unknown as MultiHeadAttention).buildFromSignature(
-        queryShape, valueShape, keyShape)
+        queryShape, valueShape, keyShape);
     }
-    return layer
+    return layer;
   }
 
   /**
@@ -531,8 +531,8 @@ export class MultiHeadAttention extends Layer {
     });
 
     const commonKwargs = {
-      kernelInitializer: kernelInitializer,
-      biasInitializer: biasInitializer,
+      kernelInitializer,
+      biasInitializer,
       kernelRegularizer: this.kernelRegularizer,
       biasRegularizer: this.biasRegularizer,
       activityRegularizer: this.activityRegularizer,
@@ -571,7 +571,7 @@ export class MultiHeadAttention extends Layer {
       equation: einsumEquation,
       outputShape: getOutputShape(outputRank - 1, outputShape),
       biasAxes: this.useBias ? biasAxes : null,
-      name: name,
+      name,
       ...commonKwargs,
     });
   }
@@ -619,12 +619,14 @@ export class MultiHeadAttention extends Layer {
         // The expand dim happens starting from the `numHeads` dimension,
         // (<batchDims>, numHeads, <queryAttentionDims, keyAttentionDims>)
         const maskExpansionAxis = -this.attentionAxes.length * 2 - 1;
-        const endIdx = attentionScores.shape.length - attentionMask.shape.length;
+        const endIdx =
+          attentionScores.shape.length - attentionMask.shape.length;
         for (let _ = 0; _ < endIdx; _++) {
           attentionMask = expandDims(attentionMask, maskExpansionAxis);
         }
       }
-      return this.softmax.apply(attentionScores, {mask: attentionMask}) as Tensor;
+      return this.softmax.apply(
+        attentionScores, {mask: attentionMask}) as Tensor;
     });
   }
 
@@ -684,7 +686,7 @@ export class MultiHeadAttention extends Layer {
     kwargs?: Kwargs
   ): Tensor | Tensor[] | SymbolicTensor | SymbolicTensor[] {
     if (!kwargs || !kwargs['value']) {
-      throw new ValueError('Must pass in `value` argument in `kwargs.`')
+      throw new ValueError('Must pass in `value` argument in `kwargs.`');
     }
     let newInputs: Tensor[]|SymbolicTensor[];
 
@@ -747,14 +749,15 @@ export class MultiHeadAttention extends Layer {
       // `value` = [B, S, N, H]
       value = this.valueDense.apply(value) as Tensor;
 
-      let [attentionOutput, attentionScores] = this.computeAttention(
+      const [attentionOutputPreDense, attentionScores] = this.computeAttention(
         query,
         key,
         value,
         attentionMask,
         training
       );
-      attentionOutput = this.outputDense.apply(attentionOutput) as Tensor;
+      const attentionOutput =
+        this.outputDense.apply(attentionOutputPreDense) as Tensor;
 
       return [attentionOutput, attentionScores];
     });
@@ -847,10 +850,8 @@ export class MultiHeadAttention extends Layer {
    *    is assumed as the keyShape.
    */
   override computeOutputShape(inputShapes: [Shape, Shape, Shape|null]): Shape {
-    let [queryShape, valueShape, keyShape] = inputShapes;
-    if (keyShape == null) {
-      keyShape = valueShape;
-    }
+    const [queryShape, valueShape, maybeKeyShape] = inputShapes;
+    const keyShape = maybeKeyShape ?? valueShape;
 
     if (queryShape.slice(-1)[0] !== valueShape.slice(-1)[0]) {
       throw new ValueError(
