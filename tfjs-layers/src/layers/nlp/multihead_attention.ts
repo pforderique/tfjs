@@ -20,7 +20,7 @@
  */
 
 /* Original source: keras/layers/attention/multi_head_attention.py */
-import { Tensor, einsum, linalg, mul, ones, serialization } from '@tensorflow/tfjs-core';
+import { Tensor, einsum, linalg, mul, ones, serialization, tidy } from '@tensorflow/tfjs-core';
 import { warn } from '@tensorflow/tfjs-core/dist/log';
 
 import { cast, expandDims } from '../../backend/tfjs_backend';
@@ -612,18 +612,20 @@ export class MultiHeadAttention extends Layer {
   private maskedSoftmax(
     attentionScores: Tensor, attentionMask?: Tensor
   ): Tensor {
-    // Normalize the attention scores to probabilities.
-    // `attentionScores` = [B, N, T, S]
-    if (attentionMask != null) {
-      // The expand dim happens starting from the `numHeads` dimension,
-      // (<batchDims>, numHeads, <queryAttentionDims, keyAttentionDims>)
-      const maskExpansionAxis = -this.attentionAxes.length * 2 - 1;
-      const endIdx = attentionScores.shape.length - attentionMask.shape.length;
-      for (let _ = 0; _ < endIdx; _++) {
-        attentionMask = expandDims(attentionMask, maskExpansionAxis);
+    return tidy(() => {
+      // Normalize the attention scores to probabilities.
+      // `attentionScores` = [B, N, T, S]
+      if (attentionMask != null) {
+        // The expand dim happens starting from the `numHeads` dimension,
+        // (<batchDims>, numHeads, <queryAttentionDims, keyAttentionDims>)
+        const maskExpansionAxis = -this.attentionAxes.length * 2 - 1;
+        const endIdx = attentionScores.shape.length - attentionMask.shape.length;
+        for (let _ = 0; _ < endIdx; _++) {
+          attentionMask = expandDims(attentionMask, maskExpansionAxis);
+        }
       }
-    }
-    return this.softmax.apply(attentionScores, {mask: attentionMask}) as Tensor;
+      return this.softmax.apply(attentionScores, {mask: attentionMask}) as Tensor;
+    });
   }
 
   /**
@@ -652,27 +654,29 @@ export class MultiHeadAttention extends Layer {
     attentionMask?: Tensor,
     training?: boolean
   ): [Tensor, Tensor] {
-    // Note: Applying scalar multiply at the smaller end of einsum improves
-    // XLA performance, but may introduce slight numeric differences in
-    // the Transformer attention head.
-    query = mul(query, 1.0 / Math.sqrt(this.keyDim));
+    return tidy(() => {
+      // Note: Applying scalar multiply at the smaller end of einsum improves
+      // XLA performance, but may introduce slight numeric differences in
+      // the Transformer attention head.
+      query = mul(query, 1.0 / Math.sqrt(this.keyDim));
 
-    // Take the dot product between "query" and "key" to get the raw
-    // attention scores.
-    let attentionScores = einsum(this.dotProductEquation, key, query);
+      // Take the dot product between "query" and "key" to get the raw
+      // attention scores.
+      let attentionScores = einsum(this.dotProductEquation, key, query);
 
-    attentionScores = this.maskedSoftmax(attentionScores, attentionMask);
+      attentionScores = this.maskedSoftmax(attentionScores, attentionMask);
 
-    // This is actually dropping out entire tokens to attend to, which might
-    // seem a bit unusual, but is taken from the original Transformer paper.
-    const attentionScoresDropout =
-      this.dropoutLayer.apply(attentionScores, {training}) as Tensor;
+      // This is actually dropping out entire tokens to attend to, which might
+      // seem a bit unusual, but is taken from the original Transformer paper.
+      const attentionScoresDropout =
+        this.dropoutLayer.apply(attentionScores, {training}) as Tensor;
 
-    // `contextLayer` = [B, T, N, H]
-    const attentionOutput =
-      einsum(this.combineEquation, attentionScoresDropout, value);
+      // `contextLayer` = [B, T, N, H]
+      const attentionOutput =
+        einsum(this.combineEquation, attentionScoresDropout, value);
 
-    return [attentionOutput, attentionScores];
+      return [attentionOutput, attentionScores];
+    });
   }
 
   override apply(
@@ -693,7 +697,9 @@ export class MultiHeadAttention extends Layer {
   override call(
     query: Tensor, kwargs: MultiHeadAttentionOptions
   ): Tensor {
-    return this.callAndReturnAttentionScores(query, kwargs)[0];
+    return tidy(() => {
+      return this.callAndReturnAttentionScores(query, kwargs)[0];
+    });
   }
 
   /**
@@ -709,47 +715,49 @@ export class MultiHeadAttention extends Layer {
       training
     }: MultiHeadAttentionOptions
   ): [Tensor, Tensor] {
-    if (!this.builtFromSignature) {
-      this.buildFromSignature(
-        query.shape,
-        value.shape,
-        key ? key.shape : null
+    return tidy(() => {
+      if (!this.builtFromSignature) {
+        this.buildFromSignature(
+          query.shape,
+          value.shape,
+          key ? key.shape : null
+        );
+      }
+      if (key == null) {
+        key = value;
+      }
+
+      // TODO(pforderique): Support RaggedTensor inputs.
+
+      attentionMask = this.computeAttentionMask(
+        query,
+        value,
+        attentionMask,
+        useCausalMask,
       );
-    }
-    if (key == null) {
-      key = value;
-    }
 
-    // TODO(pforderique): Support RaggedTensor inputs.
+      //   N = `numAttentionHeads`
+      //   H = `sizePerHead`
+      // `query` = [B, T, N ,H]
+      query = this.queryDense.apply(query) as Tensor;
 
-    attentionMask = this.computeAttentionMask(
-      query,
-      value,
-      attentionMask,
-      useCausalMask,
-    );
+      // `key` = [B, S, N, H]
+      key = this.keyDense.apply(key) as Tensor;
 
-    //   N = `numAttentionHeads`
-    //   H = `sizePerHead`
-    // `query` = [B, T, N ,H]
-    query = this.queryDense.apply(query) as Tensor;
+      // `value` = [B, S, N, H]
+      value = this.valueDense.apply(value) as Tensor;
 
-    // `key` = [B, S, N, H]
-    key = this.keyDense.apply(key) as Tensor;
+      let [attentionOutput, attentionScores] = this.computeAttention(
+        query,
+        key,
+        value,
+        attentionMask,
+        training
+      );
+      attentionOutput = this.outputDense.apply(attentionOutput) as Tensor;
 
-    // `value` = [B, S, N, H]
-    value = this.valueDense.apply(value) as Tensor;
-
-    let [attentionOutput, attentionScores] = this.computeAttention(
-      query,
-      key,
-      value,
-      attentionMask,
-      training
-    );
-    attentionOutput = this.outputDense.apply(attentionOutput) as Tensor;
-
-    return [attentionOutput, attentionScores];
+      return [attentionOutput, attentionScores];
+    });
   }
 
   /**
@@ -786,21 +794,23 @@ export class MultiHeadAttention extends Layer {
     attentionMask?: Tensor,
     useCausalMask = false
   ): Tensor {
-    let autoMask: Tensor;
+    return tidy(() => {
+      let autoMask: Tensor;
 
-    if (useCausalMask) {
-      // the shape of the causal mask is [1, T, S]
-      const mask = this.computeCasualMask(query, value);
-      autoMask = mask;
-    }
+      if (useCausalMask) {
+        // the shape of the causal mask is [1, T, S]
+        const mask = this.computeCasualMask(query, value);
+        autoMask = mask;
+      }
 
-    if (autoMask != null) {
-      // Merge attentionMask & automatic mask, to shape [B, T, S]
-      attentionMask = attentionMask ?
-        cast(attentionMask, 'bool').logicalAnd(autoMask) : autoMask;
-    }
+      if (autoMask != null) {
+        // Merge attentionMask & automatic mask, to shape [B, T, S]
+        attentionMask = attentionMask ?
+          cast(attentionMask, 'bool').logicalAnd(autoMask) : autoMask;
+      }
 
-    return attentionMask;
+      return attentionMask;
+    });
   }
 
   /**
@@ -822,10 +832,12 @@ export class MultiHeadAttention extends Layer {
    *    triangular matrix of shape [T, S].
    */
   private computeCasualMask(query: Tensor, value?: Tensor): Tensor {
-    const qSeqLength = query.shape[1];
-    const vSeqLength = value ? value.shape[1] : qSeqLength;
-    // Create a lower triangular matrix.
-    return linalg.bandPart(ones([1, qSeqLength, vSeqLength], 'bool'), -1, 0);
+    return tidy(() => {
+      const qSeqLength = query.shape[1];
+      const vSeqLength = value ? value.shape[1] : qSeqLength;
+      // Create a lower triangular matrix.
+      return linalg.bandPart(ones([1, qSeqLength, vSeqLength], 'bool'), -1, 0);
+    });
   }
 
   /**

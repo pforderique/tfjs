@@ -19,7 +19,7 @@
  * Unit Tests for MultiHeadAttention layer.
  */
 
-import { Tensor, ones, randomUniform, randomUniformInt, tensor, tensor2d } from '@tensorflow/tfjs-core';
+import { Tensor, memory, ones, randomUniform, randomUniformInt, tensor, tensor2d } from '@tensorflow/tfjs-core';
 
 import { TruncatedNormal } from '../../initializers';
 import { input } from '../../exports';
@@ -470,6 +470,16 @@ describe('MultiHeadAttention', () => {
     for (const param of params) {
       testComputeOutputShapeError(param);
     }
+  });
+
+  it('does not leak memory', () => {
+    const layer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
+    const query = input({shape: [4, 8]});
+
+    const numTensors = memory().numTensors;
+    layer.apply(query, {value: query});
+
+    expect(memory().numTensors).toEqual(numTensors + 1);
   });
   // TODO(pforderique): Test memory and serialization.
 });
