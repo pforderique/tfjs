@@ -393,6 +393,20 @@ export class MultiHeadAttention extends Layer {
   /**
    * Should be used for testing purposes only.
    */
+  get _keyDense() {
+    return this.keyDense;
+  }
+
+  /**
+   * Should be used for testing purposes only.
+   */
+  get _valueDense() {
+    return this.valueDense;
+  }
+
+  /**
+   * Should be used for testing purposes only.
+   */
   get _outputDense() {
     return this.outputDense;
   }

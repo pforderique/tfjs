@@ -178,16 +178,14 @@ describe('MultiHeadAttention', () => {
 
     // Make sure the sub layers have different kernel init value, and not
     // reusing the initializers.
-    // TODO(pforderique): Debug why these kernels are the same. getInitializer
-    // !is returning a new instance - not the same one...
-    // const queryKernel = testLayer.queryDense.kernel.read();
-    // const keyKernel = testLayer.keyDense.kernel.read();
-    // const valueKernel = testLayer.valueDense.kernel.read();
-    // const outputKernel = testLayer.outputDense.kernel.read();
+    const queryKernel = testLayer._queryDense.kernel.read();
+    const keyKernel = testLayer._keyDense.kernel.read();
+    const valueKernel = testLayer._valueDense.kernel.read();
+    const outputKernel = testLayer._outputDense.kernel.read();
 
-    // expectTensorsNotClose(queryKernel, keyKernel);
-    // expectTensorsNotClose(queryKernel, valueKernel);
-    // expectTensorsNotClose(queryKernel, outputKernel);
+    expectTensorsNotClose(queryKernel, keyKernel, 1e-6);
+    expectTensorsNotClose(queryKernel, valueKernel, 1e-6);
+    expectTensorsNotClose(queryKernel, outputKernel, 1e-6);
   });
 
   describeMathCPU('High Dimensional Attention', () => {
