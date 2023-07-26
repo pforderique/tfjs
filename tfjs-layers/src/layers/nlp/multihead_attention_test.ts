@@ -123,7 +123,7 @@ describe('MultiHeadAttention', () => {
           useBias,
         });
         // Create a 3-dimensional input (the first dimension is implicit).
-        const batchSize = 3;
+        const batchSize = 4;
         const query = randomUniform([batchSize, 4, 8]);
         const value = randomUniform([batchSize, 2, 8]);
 
@@ -474,14 +474,16 @@ describe('MultiHeadAttention', () => {
 
   it('does not leak memory', () => {
     const layer = new MultiHeadAttention({numHeads: 2, keyDim: 2});
-    const query = input({shape: [4, 8]});
+    const query = ones([1, 4, 8]);
+    // Initial call that builds sublayers and necessary tensors.
+    layer.call(query, {value: query});
 
     const numTensors = memory().numTensors;
-    layer.apply(query, {value: query});
+    layer.call(query, {value: query});
 
     expect(memory().numTensors).toEqual(numTensors + 1);
   });
-  // TODO(pforderique): Test memory and serialization.
+  // TODO(pforderique): Test serialization.
 });
 
 class SubclassAttention extends MultiHeadAttention {
