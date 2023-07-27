@@ -25,6 +25,16 @@ export function tensorArrTo2DArr(inputs: Tensor[]): unknown[][] {
   return inputs.map(input => tensorToArr(input));
 }
 
+/**
+ * Returns a new Tensor with `updates` inserted into `inputs` starting at the
+ * index `startIndices`.
+ *
+ * @param inputs Tensor to "modify"
+ * @param startIndices the starting index to insert the slice.
+ *  Length must be equal to `inputs.rank`;
+ * @param updates the update tensor. Shape must fit within `inputs` shape.
+ * @returns a new tensor with the modification.
+ */
 export function sliceUpdate(
     inputs: Tensor, startIndices: number[], updates: Tensor): Tensor {
   const indices: number[][] = [];
@@ -42,7 +52,7 @@ export function sliceUpdate(
     }
   }
   createIndices(0, []);
-  // Flatten the updates to match its update indices.
+  // Flatten the updates to match length of its update indices.
   updates = updates.reshape([updates.size]);
   return tensorScatterUpdate(inputs, indices, updates);
 }
