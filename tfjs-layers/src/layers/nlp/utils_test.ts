@@ -17,7 +17,7 @@
 
 import { tensor, test_util } from '@tensorflow/tfjs-core';
 import { sliceUpdate, tensorArrTo2DArr, tensorToArr } from './utils';
-import { expectTensorsClose } from 'tfjs-layers/src/utils/test_utils';
+import { expectTensorsClose } from '../../utils/test_utils';
 
 describe('tensor to array functions', () => {
   it('tensorToArr', () => {
