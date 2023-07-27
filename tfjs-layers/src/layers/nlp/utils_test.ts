@@ -86,4 +86,4 @@ describe('sliceUpdate', () => {
 
     expectTensorsClose(result, expected, 0);
   });
-})
+});
