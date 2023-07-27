@@ -21,9 +21,9 @@
 import { Tensor, linalg, memory, ones, randomUniform, zeros, zerosLike } from '@tensorflow/tfjs-core';
 
 import { expectTensorsClose } from '../../../utils/test_utils';
+import { sliceUpdate } from '../utils';
 
 import { CachedMultiHeadAttention } from './cached_multihead_attention';
-import { sliceUpdate } from '../utils';
 
 describe('CachedMultiHeadAttention', () => {
   it('valid call', () => {

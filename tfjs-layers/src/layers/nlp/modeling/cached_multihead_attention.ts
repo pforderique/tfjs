@@ -20,10 +20,11 @@
  */
 
 /* Original source: keras_nlp/layers/modeling/cached_multi_head_attention.py */
-import { Tensor, cast, einsum, mul, reciprocal, serialization, sqrt, stack, tensor } from '@tensorflow/tfjs-core';
+import { Tensor, cast, einsum, mul, reciprocal, serialization, sqrt, stack } from '@tensorflow/tfjs-core';
 
 import { ValueError } from '../../../errors';
 import { MultiHeadAttention } from '../multihead_attention';
+import { sliceUpdate } from '../utils';
 
 export declare interface CachedMultiHeadAttentionOptions {
   /**
@@ -135,20 +136,16 @@ export class CachedMultiHeadAttention extends MultiHeadAttention {
     // If cache is not `null`, we will use the cache to compute the final key
     // and value tensors. If `cacheUpdateIndex` is not `null`, we will first
     // update the cache before use. To do this, we first call the
-    // `_keyDense` and `_valueDense` layers, and copy the outputs into the
+    // `keyDense` and `valueDense` layers, and copy the outputs into the
     // cache at the specified index. `cache = null` handles the training
     // case, where we don't use the cache at all.
     if (cache != null) {
-      // TODO(pforderique): Fix these slices!
-      const keyCache = cache.slice(0);
-      const valueCache = value.slice(0);
+      const keyCache = cache.gather([0], 1).squeeze();
+      const valueCache = cache.gather([1], 1).squeeze();
       if (cacheUpdateIndex == null) {
         key = keyCache;
         value = valueCache;
       } else {
-        // TODO(pforderique): Replace with real implementation!
-        const sliceUpdate =
-          (a: Tensor, start: number[], u: Tensor) => tensor([]);
         const keyUpdate = this.keyDense.apply(key) as Tensor;
         const valueUpdate = this.valueDense.apply(value) as Tensor;
         const start = [0, cacheUpdateIndex, 0, 0];
