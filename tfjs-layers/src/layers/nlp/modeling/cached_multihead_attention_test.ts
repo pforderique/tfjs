@@ -18,11 +18,12 @@
 /**
  * Unit Tests for CachedMultiHeadAttention layer.
  */
-import { Tensor, linalg, memory, ones, randomUniform, tensor, zeros, zerosLike } from '@tensorflow/tfjs-core';
+import { Tensor, linalg, memory, ones, randomUniform, zeros, zerosLike } from '@tensorflow/tfjs-core';
 
 import { expectTensorsClose } from '../../../utils/test_utils';
 
 import { CachedMultiHeadAttention } from './cached_multihead_attention';
+import { sliceUpdate } from '../utils';
 
 describe('CachedMultiHeadAttention', () => {
   it('valid call', () => {
@@ -72,12 +73,6 @@ describe('CachedMultiHeadAttention', () => {
             attentionMask: nextMask,
           }
         );
-        function sliceUpdate(
-            inputs: Tensor, startIndices: number[], updates: Tensor): Tensor {
-          // TODO(pforderique): Implement.
-          return tensor([]);
-        }
-
         outputs = sliceUpdate(outputs, [0, i, 0], nextOutput);
         cache = nextCache;
       }

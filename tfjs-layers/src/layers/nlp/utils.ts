@@ -15,7 +15,7 @@
  * =============================================================================
  */
 
-import { Tensor } from '@tensorflow/tfjs-core';
+import { Tensor, tensorScatterUpdate } from '@tensorflow/tfjs-core';
 
 export function tensorToArr(input: Tensor): unknown[] {
   return Array.from(input.dataSync()) as unknown as unknown[];
@@ -23,4 +23,26 @@ export function tensorToArr(input: Tensor): unknown[] {
 
 export function tensorArrTo2DArr(inputs: Tensor[]): unknown[][] {
   return inputs.map(input => tensorToArr(input));
+}
+
+export function sliceUpdate(
+    inputs: Tensor, startIndices: number[], updates: Tensor): Tensor {
+  const indices: number[][] = [];
+  function createIndices(idx: number, curr: number[]): void {
+    if (curr.length === startIndices.length) {
+      indices.push(curr.slice());
+      return;
+    }
+    const s = startIndices[idx];
+    const e = s + updates.shape[idx];
+    for (let i = s; i < e; i++) {
+      curr.push(i);
+      createIndices(idx + 1, curr);
+      curr.pop();
+    }
+  }
+  createIndices(0, []);
+  // Flatten the updates to match its update indices.
+  updates = updates.reshape([updates.size]);
+  return tensorScatterUpdate(inputs, indices, updates);
 }

@@ -16,7 +16,8 @@
  */
 
 import { tensor, test_util } from '@tensorflow/tfjs-core';
-import { tensorArrTo2DArr, tensorToArr } from './utils';
+import { sliceUpdate, tensorArrTo2DArr, tensorToArr } from './utils';
+import { expectTensorsClose } from 'tfjs-layers/src/utils/test_utils';
 
 describe('tensor to array functions', () => {
   it('tensorToArr', () => {
@@ -40,3 +41,16 @@ describe('tensor to array functions', () => {
       tensorArrTo2DArr(inputNum) as number[][], [[2, 11], [15]]);
   });
 });
+
+describe('sliceUpdate', () => {
+  it('1D', () => {
+    const inputs = tensor([1, 2, 3, 4, 5]);
+    const startIndices = [2];
+    const updates = tensor([-1, -2]);
+    const expected = tensor([1, 2, -1, -2, 5]);
+
+    const result = sliceUpdate(inputs, startIndices, updates);
+
+    expectTensorsClose(result, expected, 0);
+  });
+})
