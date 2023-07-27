@@ -15,7 +15,7 @@
  * =============================================================================
  */
 
-import { tensor, test_util } from '@tensorflow/tfjs-core';
+import { ones, tensor, test_util, zeros } from '@tensorflow/tfjs-core';
 import { sliceUpdate, tensorArrTo2DArr, tensorToArr } from './utils';
 import { expectTensorsClose } from 'tfjs-layers/src/utils/test_utils';
 
@@ -49,6 +49,39 @@ describe('sliceUpdate', () => {
     const updates = tensor([-1, -2]);
     const expected = tensor([1, 2, -1, -2, 5]);
 
+    const result = sliceUpdate(inputs, startIndices, updates);
+
+    expectTensorsClose(result, expected, 0);
+  });
+
+  it('2D', () => {
+    const inputs = zeros([2, 5]);
+    const startIndices = [0, 1];
+    const updates = tensor([
+      [-1, -2],
+      [-4, -3],
+    ]);
+    const expected = tensor([
+      [0, -1, -2, 0, 0],
+      [0, -4, -3, 0, 0]
+    ]);
+    const result = sliceUpdate(inputs, startIndices, updates);
+
+    expectTensorsClose(result, expected, 0);
+  });
+
+  it('3D', () => {
+    const inputs = zeros([2, 3, 4]);
+    const startIndices = [0, 0, 0];
+    const updates = ones([2, 1, 4]);
+    const expected = tensor([
+      [[1, 1, 1, 1],
+       [0, 0, 0, 0],
+       [0, 0, 0, 0]],
+      [[1, 1, 1, 1],
+       [0, 0, 0, 0],
+       [0, 0, 0, 0]],
+    ]);
     const result = sliceUpdate(inputs, startIndices, updates);
 
     expectTensorsClose(result, expected, 0);
