@@ -76,7 +76,7 @@ export declare interface TransformerDecoderArgs extends LayerArgs {
    * (similar to BERT).
    * Defaults to `false`.
    */
-  normalizeFirst: boolean;
+  normalizeFirst?: boolean;
 }
 
 export declare interface TransformerDecoderOptions {
@@ -95,7 +95,7 @@ export declare interface TransformerDecoderOptions {
    * A boolean Tensor, the padding mask of decoder sequence, must be of shape
    * `[batchSize, decoderSequenceLength]`.
    */
-  decoderPaddingMask: Tensor;
+  decoderPaddingMask?: Tensor;
 
   /**
    * A boolean Tensor. Customized decoder sequence mask, must be of shape
