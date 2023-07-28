@@ -20,7 +20,7 @@
  */
 
 /* Original source: keras_nlp/layers/modeling/cached_multi_head_attention.py */
-import { Tensor, cast, einsum, mul, reciprocal, serialization, sqrt, stack } from '@tensorflow/tfjs-core';
+import { Tensor, cast, einsum, mul, reciprocal, serialization, sqrt, stack, tidy } from '@tensorflow/tfjs-core';
 
 import { ValueError } from '../../../errors';
 import { MultiHeadAttention } from '../multihead_attention';
@@ -124,55 +124,59 @@ export class CachedMultiHeadAttention extends MultiHeadAttention {
       cacheUpdateIndex
     } : CachedMultiHeadAttentionOptions
   ): [Tensor, Tensor] {
-    if (!this.builtFromSignature) {
-      this.buildFromSignature(
-        query.shape, value.shape, key ? key.shape : null);
-    }
-    if (key == null) {
-      key = value;
-    }
+    return tidy(() => {
+      if (!this.builtFromSignature) {
+        this.buildFromSignature(
+          query.shape, value.shape, key ? key.shape : null);
+      }
+      if (key == null) {
+        key = value;
+      }
 
-    query = this.queryDense.apply(query) as Tensor;
-    // If cache is not `null`, we will use the cache to compute the final key
-    // and value tensors. If `cacheUpdateIndex` is not `null`, we will first
-    // update the cache before use. To do this, we first call the
-    // `keyDense` and `valueDense` layers, and copy the outputs into the
-    // cache at the specified index. `cache = null` handles the training
-    // case, where we don't use the cache at all.
-    if (cache != null) {
-      const keyCache = cache.gather([0], 1).squeeze();
-      const valueCache = cache.gather([1], 1).squeeze();
-      if (cacheUpdateIndex == null) {
-        key = keyCache;
-        value = valueCache;
+      query = this.queryDense.apply(query) as Tensor;
+      // If cache is not `null`, we will use the cache to compute the final key
+      // and value tensors. If `cacheUpdateIndex` is not `null`, we will first
+      // update the cache before use. To do this, we first call the
+      // `keyDense` and `valueDense` layers, and copy the outputs into the
+      // cache at the specified index. `cache = null` handles the training
+      // case, where we don't use the cache at all.
+      if (cache != null) {
+        // TODO(pforderique): I think squeezing here might be removing other dims....
+        const keyCache = cache.gather([0], 1).squeeze();
+        const valueCache = cache.gather([1], 1).squeeze();
+        if (cacheUpdateIndex == null) {
+          key = keyCache;
+          value = valueCache;
+        } else {
+          const keyUpdate = this.keyDense.apply(key) as Tensor;
+          const valueUpdate = this.valueDense.apply(value) as Tensor;
+          const start = [0, cacheUpdateIndex, 0, 0];
+          key = sliceUpdate(keyCache, start, keyUpdate);
+          value = sliceUpdate(valueCache, start, valueUpdate);
+          cache = stack([key, value], 1);
+        }
       } else {
-        const keyUpdate = this.keyDense.apply(key) as Tensor;
-        const valueUpdate = this.valueDense.apply(value) as Tensor;
-        const start = [0, cacheUpdateIndex, 0, 0];
-        key = sliceUpdate(keyCache, start, keyUpdate);
-        value = sliceUpdate(valueCache, start, valueUpdate);
-        cache = stack([key, value], 1);
+        if (cacheUpdateIndex != null) {
+          throw new ValueError(
+            '`cacheUpdateIndex` should not be set if `cache` is `null`. ' +
+            `Received: cache=${cache}, cacheUpdateIndex=${cacheUpdateIndex}`
+          );
+        }
+        key = this.keyDense.apply(key) as Tensor;
+        value = this.valueDense.apply(value) as Tensor;
       }
-    } else {
-      if (cacheUpdateIndex != null) {
-        throw new ValueError(
-          '`cacheUpdateIndex` should not be set if `cache` is `null`. ' +
-          `Received: cache=${cache}, cacheUpdateIndex=${cacheUpdateIndex}`
-        );
-      }
-      key = this.keyDense.apply(key) as Tensor;
-      value = this.valueDense.apply(value) as Tensor;
-    }
 
-    query = mul(query, reciprocal(sqrt(cast(this.keyDim, query.dtype))));
-    let attentionScores = einsum(this.dotProductEquation, key, query);
-    attentionScores = this.maskedSoftmax(attentionScores, attentionMask);
-    attentionScores = this.dropoutLayer.apply(attentionScores) as Tensor;
+      query = mul(query, reciprocal(sqrt(cast(this.keyDim, query.dtype))));
+      let attentionScores = einsum(this.dotProductEquation, key, query);
+      attentionScores = this.maskedSoftmax(attentionScores, attentionMask);
+      attentionScores = this.dropoutLayer.apply(attentionScores) as Tensor;
 
-    let attentionOutput = einsum(this.combineEquation, attentionScores, value);
-    attentionOutput = this.outputDense.apply(attentionOutput) as Tensor;
+      let attentionOutput =
+        einsum(this.combineEquation, attentionScores, value);
+      attentionOutput = this.outputDense.apply(attentionOutput) as Tensor;
 
-    return [attentionOutput, cache];
+      return [attentionOutput, cache];
+    });
   }
 }
 serialization.registerClass(CachedMultiHeadAttention);

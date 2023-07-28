@@ -33,7 +33,7 @@ describe('CachedMultiHeadAttention', () => {
     expect(() => layer.call(query, {value: query})).not.toThrow();
   });
 
-  it('cache call is correct', () => {
+  it('fabb cache call is correct', () => {
     const batchSize = 2;
     const seqLen = 5;
     const numHeads = 2;
@@ -47,12 +47,11 @@ describe('CachedMultiHeadAttention', () => {
     const mask = linalg.bandPart(ones([seqLen, seqLen]), -1, 0);
     const outputs = zerosLike(x);
 
-    const layer = new CachedMultiHeadAttention({numHeads: 2, keyDim: 2});
-    const query = ones([1, 4, 8]);
+    const layer = new CachedMultiHeadAttention({numHeads, keyDim});
     const [noLoopOutputs, noLoopCache] = layer.callAndReturnCache(
-      query,
+      x,
       {
-        value: query,
+        value: x,
         cache: inputCache,
         cacheUpdateIndex: 0,
         attentionMask: mask
