@@ -20,13 +20,17 @@
  */
 
 /* Original source: keras_nlp/layers/modeling/transformer_decoder.py */
-import { Tensor, Tensor1D, Tensor2D, serialization } from '@tensorflow/tfjs-core';
+import { Tensor, add, serialization } from '@tensorflow/tfjs-core';
 
 import { Layer, LayerArgs, } from '../../../engine/topology';
-import { NotImplementedError } from '../../../errors';
-import { InitializerIdentifier } from '../../../initializers';
+import { NotImplementedError, ValueError } from '../../../errors';
+import { Initializer, InitializerIdentifier, getInitializer } from '../../../initializers';
 import { ActivationIdentifier } from '../../../keras_format/activation_config';
 import { Shape } from '../../../keras_format/common';
+import { CachedMultiHeadAttention } from './cached_multihead_attention';
+import { Activation, getActivation } from '../../../activations';
+import { LayerNormalization } from '../../normalization';
+import { Dense, Dropout } from '../../core';
 
 export declare interface TransformerDecoderArgs extends LayerArgs {
   /**
@@ -61,13 +65,13 @@ export declare interface TransformerDecoderArgs extends LayerArgs {
    * The kernel initializer for the dense and multiheaded attention layers.
    * Defaults to `"glorotUniform"`.
    */
-  kernelInitializer?: InitializerIdentifier;
+  kernelInitializer?: Initializer|InitializerIdentifier;
 
   /**
    * The bias initializer for the dense and multiheaded attention layers.
    * Defaults to `"zeros"`.
    */
-  biasInitializer?: InitializerIdentifier;
+  biasInitializer?: Initializer|InitializerIdentifier;
 
   /**
    * If true, the inputs to the attention layer(s) and the intermediate dense
@@ -126,7 +130,7 @@ export declare interface TransformerDecoderOptions {
    * `selfAttentionCache`. Usually, this is the index of the current token
    * being processed during decoding.
    */
-  selfAttentionCacheUpdateIndex?: number|Tensor;
+  selfAttentionCacheUpdateIndex?: number;
 
   /**
    * A dense float Tensor. The cache of key/value pairs in the cross-attention
@@ -140,7 +144,7 @@ export declare interface TransformerDecoderOptions {
    * `crossAttentionCache`), or `null` (reuse a previously computed
    * `crossAttentionCache`).
    */
-  crossAttentionCacheUpdateIndex?: number|Tensor;
+  crossAttentionCacheUpdateIndex?: number;
 
   /**
    * If true, a causal mask (masking out future input) is applied on the decoder
@@ -201,9 +205,41 @@ export class TransformerDecoder extends Layer {
   /** @nocollapse */
   static readonly className = 'TransformerDecoder';
 
+  protected intermediateDim: number;
+  protected numHeads: number;
+  protected dropout: number;
+  protected activation: Activation;
+  protected layerNormEpsilon: number;
+  protected kernelInitializer: Initializer;
+  protected biasInitializer: Initializer;
+  protected normalizeFirst: boolean;
+  protected decoderSequenceShape: Shape;
+  protected encoderSequenceShape: Shape;
+
+  protected selfAttentionLayer: CachedMultiHeadAttention;
+  protected selfAttentionLayernorm: LayerNormalization;
+  protected selfAttentionDropout: Dropout;
+
+  protected selfCrossAttentionLayer: CachedMultiHeadAttention;
+  protected selfCrossAttentionLayernorm: LayerNormalization;
+  protected selfCrossAttentionDropout: Dropout;
+
+  protected feedforwardIntermediateDense: Dense;
+  protected feedforwardOutputDense: Dense;
+  protected feedforwardLayernorm: LayerNormalization;
+  protected feedforwardDropout: Dropout;
+
   constructor(args: TransformerDecoderArgs) {
     super(args);
-    throw new NotImplementedError(`Not implemented yet.`);
+    this.intermediateDim = args.intermediateDim;
+    this.numHeads = args.numHeads;
+    this.dropout = args.dropout ?? 0;
+    this.activation = getActivation(args.activation ?? 'relu');
+    this.layerNormEpsilon = args.layerNormEpsilon ?? 1e-05;
+    this.kernelInitializer =
+      getInitializer(args.kernelInitializer ?? 'glorotUniform');
+    this.biasInitializer = getInitializer(args.biasInitializer ?? 'zeros');
+    this.normalizeFirst = args.normalizeFirst ?? false;
   }
 
   /**
@@ -212,22 +248,82 @@ export class TransformerDecoder extends Layer {
    *  [decoderSequenceShape, encoderSequenceShape]
    */
   override build(inputShape: Shape|[Shape, Shape]): void {
-    throw new NotImplementedError(`Not implemented yet.`);
+    if (Array.isArray(inputShape[0])) {
+      // `inputShape` is of type [Shape, Shape].
+      [this.decoderSequenceShape, this.encoderSequenceShape] =
+        inputShape as [Shape, Shape];
+    } else {
+      this.decoderSequenceShape = inputShape as Shape;
+    }
+    // Infer the dimension of our hidden feature size from the build shape.
+    const hiddenDim = this.decoderSequenceShape[-1];
+    // Attention head size is `hiddenDim` over the number of heads.
+    const headDim = Math.floor(hiddenDim / this.numHeads);
+
+    // Self attention layers.
+    this.selfAttentionLayer = new CachedMultiHeadAttention({
+      numHeads: this.numHeads,
+      keyDim: headDim,
+      dropout: this.dropout,
+      kernelInitializer: getInitializer(this.kernelInitializer.getClassName()),
+      biasInitializer: getInitializer(this.biasInitializer.getClassName()),
+    });
+
+    this.selfAttentionLayer.buildFromSignature(
+      this.decoderSequenceShape, this.decoderSequenceShape);
+
+    this.selfAttentionLayernorm =
+      new LayerNormalization({epsilon: this.layerNormEpsilon});
+
+    this.selfAttentionLayernorm.build(this.decoderSequenceShape);
+    this.selfAttentionDropout = new Dropout({rate: this.dropout});
+
+    // Cross attention layers are optional.
+    // TODO(pforderique): Add cross attention layers.
+
+    // Feedforward layers.
+    this.feedforwardIntermediateDense = new Dense({
+      units: this.intermediateDim,
+      activation: this.activation.getClassName() as ActivationIdentifier,
+      kernelInitializer: getInitializer(this.kernelInitializer.getClassName()),
+      biasInitializer: getInitializer(this.biasInitializer.getClassName()),
+    });
+    this.feedforwardIntermediateDense.build(this.decoderSequenceShape);
+    this.feedforwardOutputDense = new Dense({
+      units: hiddenDim,
+      kernelInitializer: getInitializer(this.kernelInitializer.getClassName()),
+      biasInitializer: getInitializer(this.biasInitializer.getClassName()),
+    });
+    const intermediateShape = this.decoderSequenceShape.slice();
+    intermediateShape[intermediateShape.length - 1] = this.intermediateDim;
+    this.feedforwardOutputDense.build(intermediateShape);
+    this.feedforwardLayernorm =
+      new LayerNormalization({epsilon: this.layerNormEpsilon});
+    this.feedforwardLayernorm.build(this.decoderSequenceShape);
+    this.feedforwardDropout = new Dropout({rate: this.dropout});
+    // Create layers based on input shape.
+    this.built = true;
   }
 
   override apply(
-    inputs: Tensor|Tensor[], kwargs?: TransformerDecoderOptions
-  ): Tensor | Tensor[] {
-    throw new NotImplementedError(`Not implemented yet.`);
+      decoderSequence: Tensor, kwargs?: TransformerDecoderOptions): Tensor {
+    if (!this.built) {
+      const decoderSequenceShape = decoderSequence.shape;
+      const encoderSequenceShape =
+        kwargs.encoderSequence ? kwargs.encoderSequence.shape : null;
+      this.build([decoderSequenceShape, encoderSequenceShape]);
+    }
+    return super.apply(decoderSequence, kwargs) as Tensor;
   }
 
   override call(
-    decoderSequence: Tensor, kwargs: TransformerDecoderOptions
-  ): Tensor|Tensor[] {
+      decoderSequence: Tensor, kwargs: TransformerDecoderOptions): Tensor {
     return this.callAndReturnCaches(decoderSequence, kwargs)[0];
   }
 
   /**
+   * Forward pass of the TransformerDecoder.
+   *
    * @returns One of three things, depending on call arguments:
    *   - `[outputs, null, null]`, if `selfAttentionCache` is `null`.
    *   - `[outputs, selfAttentionCache, null]`, if `selfAttentionCache` is
@@ -238,9 +334,102 @@ export class TransformerDecoder extends Layer {
    */
   callAndReturnCaches(
     decoderSequence: Tensor, kwargs: TransformerDecoderOptions
-  ): [Tensor1D|Tensor2D, Tensor1D|Tensor2D, Tensor1D|Tensor2D] {
-    throw new NotImplementedError(
-      `Not implemented yet. Uses ${this.computeSelfAttentionMask}`);
+  ): [Tensor, Tensor, Tensor] {
+
+    const hasEncoderSequence = kwargs.encoderSequence != null;
+    const hasCrossAttention = this.selfCrossAttentionLayer != null;
+
+    if (!hasCrossAttention && hasEncoderSequence) {
+      throw new ValueError(
+        'The number of call arguments to `TransformerDecoder` should ' +
+        'not change. Use `layer.apply(decoderSequence, {encoderSequence})` ' +
+        'to build a layer with cross attention, or ' +
+        '`layer.apply (decoderSequence)` to build a layer without. ' +
+        'This layer has been built without cross attention, but ' +
+        'you are trying to call it with encoderSequence.'
+      );
+    } else if (hasCrossAttention && !hasEncoderSequence) {
+      throw new ValueError(
+        'The number of call arguments to `TransformerDecoder` should not ' +
+        'change. Use `layer.apply(decoderSequence, {encoderSequence})` ' +
+        'to build a layer with cross attention, or ' +
+        '`layer.apply(decoderSequence)` to build a layer without. ' +
+        'This layer has been built with cross attention, but ' +
+        'you did not provide encoderSequence.'
+      );
+    }
+
+    const hasSelfAttentionCache = kwargs.selfAttentionCache != null;
+    const hasCrossAttentionCache = kwargs.crossAttentionCache != null;
+    if (hasCrossAttention && (
+      hasSelfAttentionCache !== hasCrossAttentionCache
+    )) {
+      throw new ValueError(
+        'When calling `TransformerDecoder` with cross-attention (with both ' +
+        '`encoderSequence` and `decoderSequence`), `selfAttentionCache` and ' +
+        '`crossAttentionCache` should both be set or both be `null`. One ' +
+        'cannot be `null` while the other is not. Received: ' +
+        `selfAttentionCache=${kwargs.selfAttentionCache}, ` +
+        `crossAttentionCache=${kwargs.crossAttentionCache}.`
+      );
+    }
+
+    const selfAttentionMask = this.computeSelfAttentionMask(
+      decoderSequence,
+      kwargs.decoderPaddingMask,
+      kwargs.decoderAttentionMask,
+      kwargs.useCausalMask,
+      kwargs.selfAttentionCache,
+      kwargs.selfAttentionCacheUpdateIndex,
+    );
+
+    let x = decoderSequence; // Intermediate result.
+    let selfAttentionCache;
+
+    // Self attention block.
+    let residual = x;
+    if (this.normalizeFirst) {
+      x = this.selfAttentionLayernorm.apply(x) as Tensor;
+    }
+    [x, kwargs.selfAttentionCache] = this.selfAttentionLayer.callAndReturnCache(
+      x,
+      {
+        value: x,
+        attentionMask: selfAttentionMask,
+        cache: kwargs.selfAttentionCache,
+        cacheUpdateIndex: kwargs.selfAttentionCacheUpdateIndex,
+      }
+    );
+    x = this.selfAttentionDropout.apply(x) as Tensor;
+    x = add(x, residual);
+    if (!this.normalizeFirst) {
+      x = this.selfAttentionLayernorm.apply(x) as Tensor;
+    }
+
+    // Cross attention is optional.
+    // TODO(pforderique): Add cross attention logic for encoder-decoder arch.
+
+    // Feedforward block.
+    residual = x;
+    if (this.normalizeFirst) {
+      x = this.selfAttentionLayernorm.apply(x) as Tensor;
+    }
+    x = this.feedforwardIntermediateDense.apply(x) as Tensor;
+    x = this.feedforwardOutputDense.apply(x) as Tensor;
+    x = this.feedforwardDropout.apply(x) as Tensor;
+    x = add(x, residual);
+    if (!this.normalizeFirst) {
+      x = this.selfAttentionLayernorm.apply(x) as Tensor;
+    }
+
+    if (kwargs.selfAttentionCache != null) {
+      if (hasCrossAttention) {
+        return [x, selfAttentionCache, kwargs.crossAttentionCache];
+      } else {
+        return [x, selfAttentionCache, null];
+      }
+    }
+    return [x, null, null];
   }
 
   private computeSelfAttentionMask(
