@@ -141,7 +141,6 @@ export class CachedMultiHeadAttention extends MultiHeadAttention {
       // cache at the specified index. `cache = null` handles the training
       // case, where we don't use the cache at all.
       if (cache != null) {
-        // TODO(pforderique): I think squeezing here might be removing other dims....
         const keyCache = cache.gather([0], 1).squeeze();
         const valueCache = cache.gather([1], 1).squeeze();
         if (cacheUpdateIndex == null) {

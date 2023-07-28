@@ -33,7 +33,7 @@ describe('CachedMultiHeadAttention', () => {
     expect(() => layer.call(query, {value: query})).not.toThrow();
   });
 
-  it('fabb cache call is correct', () => {
+  it('cache call is correct', () => {
     const batchSize = 2;
     const seqLen = 5;
     const numHeads = 2;
@@ -67,7 +67,7 @@ describe('CachedMultiHeadAttention', () => {
           nextInput,
           {
             value: nextInput,
-            cache: cache,
+            cache,
             cacheUpdateIndex: i,
             attentionMask: nextMask,
           }
