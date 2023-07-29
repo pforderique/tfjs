@@ -22,15 +22,17 @@
 /* Original source: keras_nlp/layers/modeling/transformer_decoder.py */
 import { Tensor, add, serialization } from '@tensorflow/tfjs-core';
 
+import { Activation, getActivation, serializeActivation } from '../../../activations';
 import { Layer, LayerArgs, } from '../../../engine/topology';
-import { NotImplementedError, ValueError } from '../../../errors';
-import { Initializer, InitializerIdentifier, getInitializer } from '../../../initializers';
+import { ValueError } from '../../../errors';
+import { Initializer, InitializerIdentifier, getInitializer, serializeInitializer } from '../../../initializers';
 import { ActivationIdentifier } from '../../../keras_format/activation_config';
 import { Shape } from '../../../keras_format/common';
-import { CachedMultiHeadAttention } from './cached_multihead_attention';
-import { Activation, getActivation } from '../../../activations';
-import { LayerNormalization } from '../../normalization';
 import { Dense, Dropout } from '../../core';
+import { LayerNormalization } from '../../normalization';
+
+import { CachedMultiHeadAttention } from './cached_multihead_attention';
+import { computeCausalMask, mergePaddingAndAttentionMask } from './transformer_layer_utils';
 
 export declare interface TransformerDecoderArgs extends LayerArgs {
   /**
@@ -438,17 +440,52 @@ export class TransformerDecoder extends Layer {
     decoderAttentionMask: Tensor,
     useCasualMask: boolean,
     selfAttentionCache: Tensor,
-    selfAttentionCacheUpdateIndex: number|Tensor
+    selfAttentionCacheUpdateIndex: number
   ): Tensor {
-    throw new NotImplementedError(`Not implemented yet.`);
+    const decoderMask = mergePaddingAndAttentionMask(
+      decoderSequence, decoderPaddingMask, decoderAttentionMask);
+    if(useCasualMask) {
+      const batchSize = decoderSequence.shape[0];
+      let inputLength = decoderSequence.shape[1];
+      const outputLength = decoderSequence.shape[1];
+      // We need to handle a rectangular causal mask when doing cached
+      // decoding. For generative inference, `decoderSequence` will
+      // generally be length 1, and `cache` will be the full generation length.
+      if(selfAttentionCache != null) {
+        inputLength = selfAttentionCache.shape[2];
+      }
+
+      const causalMask = computeCausalMask(
+        batchSize,
+        inputLength,
+        outputLength,
+        selfAttentionCacheUpdateIndex ?? 0
+      );
+      return decoderMask != null ? decoderMask.minimum(causalMask) : causalMask;
+    }
+    return decoderMask;
   }
 
   override getConfig(): serialization.ConfigDict {
-    throw new NotImplementedError(`Not implemented yet.`);
+    const config = {
+      'intermediateDim': this.intermediateDim,
+      'numHeads': this.numHeads,
+      'dropout': this.dropout,
+      'activation': serializeActivation(this.activation),
+      'layerNormEpsilon': this.layerNormEpsilon,
+      'kernelInitializer': serializeInitializer(this.kernelInitializer),
+      "biasInitializer": serializeInitializer(this.biasInitializer),
+      "normalizeFirst": this.normalizeFirst,
+      "decoderSequenceShape": this.decoderSequenceShape,
+      "encoderSequenceShape": this.encoderSequenceShape,
+    };
+    const baseConfig = super.getConfig();
+    Object.assign(config, baseConfig);
+    return config;
   }
 
   override computeOutputShape(decoderSequenceShape: Shape): Shape {
-    throw new NotImplementedError(`Not implemented yet.`);
+    return decoderSequenceShape;
   }
 }
 serialization.registerClass(TransformerDecoder);
