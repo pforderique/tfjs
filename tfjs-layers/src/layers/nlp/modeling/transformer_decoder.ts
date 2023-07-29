@@ -23,7 +23,7 @@
 import { Tensor, add, serialization } from '@tensorflow/tfjs-core';
 
 import { Activation, getActivation, serializeActivation } from '../../../activations';
-import { Layer, LayerArgs, } from '../../../engine/topology';
+import { Layer, LayerArgs, SymbolicTensor, } from '../../../engine/topology';
 import { ValueError } from '../../../errors';
 import { Initializer, InitializerIdentifier, getInitializer, serializeInitializer } from '../../../initializers';
 import { ActivationIdentifier } from '../../../keras_format/activation_config';
@@ -95,7 +95,7 @@ export declare interface TransformerDecoderOptions {
    * should be left `null`. Once the model is called without an encoderSequence,
    * you cannot call it again with encoderSequence.
    */
-  encoderSequence?: Tensor;
+  encoderSequence?: Tensor|SymbolicTensor;
 
   /**
    * A boolean Tensor, the padding mask of decoder sequence, must be of shape
@@ -308,14 +308,15 @@ export class TransformerDecoder extends Layer {
   }
 
   override apply(
-      decoderSequence: Tensor, kwargs?: TransformerDecoderOptions): Tensor {
+      decoderSequence: Tensor|SymbolicTensor,
+      kwargs?: TransformerDecoderOptions): Tensor|SymbolicTensor {
     if (!this.built) {
       const decoderSequenceShape = decoderSequence.shape;
       const encoderSequenceShape =
         kwargs.encoderSequence ? kwargs.encoderSequence.shape : null;
       this.build([decoderSequenceShape, encoderSequenceShape]);
     }
-    return super.apply(decoderSequence, kwargs) as Tensor;
+    return super.apply(decoderSequence, kwargs) as Tensor|SymbolicTensor;
   }
 
   override call(

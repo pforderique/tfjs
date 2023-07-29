@@ -18,10 +18,15 @@
 /**
  * Unit Tests for Transformer Decoder.
  */
-import { memory, ones, randomUniform, zeros } from '@tensorflow/tfjs-core';
+import { Tensor, memory, ones, randomUniform, randomUniformInt, tensor, zeros } from '@tensorflow/tfjs-core';
+
+import { SymbolicTensor } from '../../../engine/topology';
+import { input, model } from '../../../exports';
 
 import { CachedMultiHeadAttention } from './cached_multihead_attention';
 import { TransformerDecoder } from './transformer_decoder';
+import { Dense } from '../../core';
+import { expectTensorsClose } from 'tfjs-layers/src/utils/test_utils';
 
 describe('TransformerDecoder', () => {
   describe('valid call', () => {
@@ -94,6 +99,75 @@ describe('TransformerDecoder', () => {
       kernelInitializer: 'Invalid',
     })).toThrow();
   });
+
+  it('one training step of transformer with cross attention', async () => {
+    const decoderInput = input({shape: [4, 6]});
+    const encoderInput = input({shape: [4, 6]});
+    const decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+    let outputs = decoder.apply(decoderInput, {encoderSequence: encoderInput});
+    outputs = new Dense({
+      units: 10, activation: 'softmax'}).apply(outputs) as SymbolicTensor;
+    const tModel = model({inputs: [decoderInput, encoderInput], outputs});
+
+    const decoderSequence = randomUniform([2, 4, 6]);
+    const encoderSequence = randomUniform([2, 4, 6]);
+    const label = randomUniformInt([2, 4, 1], 0, 10);
+
+    tModel.compile({loss: 'sparseCategoricalCrossentropy', optimizer: 'adam'});
+    const loss = tModel.trainOnBatch([decoderSequence, encoderSequence], label);
+
+    expect(await loss).toBeGreaterThan(0);
+  });
+
+  it('one training step of transformer without cross attention', async () => {
+    const decoderInput = input({shape: [4, 6]});
+    const decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+    let outputs = decoder.apply(decoderInput);
+    outputs = new Dense({
+      units: 10, activation: 'softmax'}).apply(outputs) as SymbolicTensor;
+    const tModel = model({inputs: decoderInput, outputs});
+
+    const decoderSequence = randomUniform([2, 4, 6]);
+    const label = randomUniformInt([2, 4, 1], 0, 10);
+
+    tModel.compile({loss: 'sparseCategoricalCrossentropy', optimizer: 'adam'});
+    const loss = tModel.trainOnBatch(decoderSequence, label);
+
+    expect(await loss).toBeGreaterThan(0);
+  });
+
+  it('mask propogation', () => {
+    const decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+    const decoderSequence = randomUniform([1, 4, 6]);
+    const encoderSequence = randomUniform([1, 4, 6]);
+    const decoderAttentionMask = tensor([[1, 1, 0, 0]], [1, 4], 'bool');
+    const outputs = decoder.apply(
+      decoderSequence,
+      {encoderSequence, decoderAttentionMask}
+    ) as Tensor;
+
+    expectTensorsClose(
+      decoder.computeMask(outputs, decoderAttentionMask) as Tensor,
+      decoderAttentionMask
+    );
+  });
+
+  it('mask propogation without cross attention ', () => {
+    const decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+    const decoderSequence = randomUniform([1, 4, 6]);
+    const decoderAttentionMask = tensor([[1, 1, 0, 0]], [1, 4], 'bool');
+    const outputs = decoder.apply(
+      decoderSequence,
+      {decoderAttentionMask}
+    ) as Tensor;
+
+    expectTensorsClose(
+      decoder.computeMask(outputs, decoderAttentionMask) as Tensor,
+      decoderAttentionMask
+    );
+  });
+
+  // TODO(pforderique): Add the rest of the tests.
 
   it('does not leak memory', () => {
     const layer = new CachedMultiHeadAttention({numHeads: 2, keyDim: 2});
