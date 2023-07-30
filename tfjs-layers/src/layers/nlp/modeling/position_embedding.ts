@@ -20,7 +20,7 @@
  */
 
 /* Original source: keras_nlp/layers/modeling/position_embedding.py */
-import { Tensor, serialization } from '@tensorflow/tfjs-core';
+import { Tensor, serialization, tidy } from '@tensorflow/tfjs-core';
 
 import { Shape } from '../../../keras_format/common';
 import { Layer, LayerArgs } from '../../../engine/topology';
@@ -39,7 +39,7 @@ export declare interface PositionEmbeddingArgs extends LayerArgs {
    * The initializer to use for the embedding weights.
    * Defaults to `"glorotUniform"`.
    */
-  initializer?: InitializerIdentifier;
+  initializer?: Initializer|InitializerIdentifier;
 }
 
 export declare interface PositionEmbeddingOptions {
@@ -127,14 +127,16 @@ export class PositionEmbedding extends Layer {
     inputs: Tensor|Tensor[],
     kwargs: PositionEmbeddingOptions={startIndex: 0}
   ): Tensor {
-    const shape = getExactlyOneTensor(inputs).shape;
-    const featureLength = shape[shape.length - 1];
-    const sequenceLength = shape[shape.length - 2];
-    // trim to match the length of the input sequence, which might be less
-    // than the sequence_length of the layer.
-    const positionEmbeddings = this.positionEmbeddings.read().slice(
-      [kwargs.startIndex, 0], [sequenceLength, featureLength]);
-    return positionEmbeddings.broadcastTo(shape);
+    return tidy(() => {
+      const shape = getExactlyOneTensor(inputs).shape;
+      const featureLength = shape[shape.length - 1];
+      const sequenceLength = shape[shape.length - 2];
+      // trim to match the length of the input sequence, which might be less
+      // than the sequence_length of the layer.
+      const positionEmbeddings = this.positionEmbeddings.read().slice(
+        [kwargs.startIndex, 0], [sequenceLength, featureLength]);
+      return positionEmbeddings.broadcastTo(shape);
+    });
   }
 
   override computeOutputShape(inputShape: Shape): Shape {
