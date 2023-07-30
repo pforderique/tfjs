@@ -18,15 +18,15 @@
 /**
  * Unit Tests for Transformer Decoder.
  */
-import { Tensor, memory, ones, randomUniform, randomUniformInt, tensor, zeros } from '@tensorflow/tfjs-core';
+import { Tensor, memory, randomUniform, randomUniformInt, tensor, zeros, zerosLike } from '@tensorflow/tfjs-core';
 
 import { SymbolicTensor } from '../../../engine/topology';
 import { input, model } from '../../../exports';
-
-import { CachedMultiHeadAttention } from './cached_multihead_attention';
-import { TransformerDecoder } from './transformer_decoder';
+import { expectTensorsClose } from '../../../utils/test_utils';
 import { Dense } from '../../core';
-import { expectTensorsClose } from 'tfjs-layers/src/utils/test_utils';
+import { sliceUpdate } from '../utils';
+
+import { TransformerDecoder } from './transformer_decoder';
 
 describe('TransformerDecoder', () => {
   describe('valid call', () => {
@@ -167,18 +167,61 @@ describe('TransformerDecoder', () => {
     );
   });
 
-  // TODO(pforderique): Add the rest of the tests.
+  it('cache call is correct', () => {
+    const batchSize = 2;
+    const seqLen = 5;
+    const numHeads = 2;
+    const keyDim = 4;
+    const hiddenDim = numHeads * keyDim;
+
+    const inputShape = [batchSize, seqLen, hiddenDim];
+    const x = randomUniform(inputShape);
+    const inputCache = zeros([batchSize, 2, seqLen, numHeads, keyDim]);
+    const outputs = zerosLike(x);
+
+    const layer = new TransformerDecoder({intermediateDim: 4, numHeads});
+    const [noLoopOutputs, noLoopCache] = layer.callAndReturnCaches(
+      x, {selfAttentionCache: inputCache, selfAttentionCacheUpdateIndex: 0});
+
+    function call(outputs: Tensor, cache: Tensor) {
+      for (let i = 0; i < seqLen; i++) {
+        // Compute the rest tokens.
+        const nextInput = x.slice([0, i, 0], [batchSize, 1, hiddenDim]);
+        const [nextOutput, nextCache] = layer.callAndReturnCaches(
+          nextInput,
+          {
+            selfAttentionCache: cache,
+            selfAttentionCacheUpdateIndex: i
+          }
+        );
+        outputs = sliceUpdate(outputs, [0, i, 0], nextOutput);
+        cache = nextCache;
+      }
+      return [outputs, cache];
+    }
+    const [output, outputCache] = call(outputs, inputCache);
+
+    expectTensorsClose(output, noLoopOutputs);
+    expectTensorsClose(outputCache, noLoopCache);
+  });
+
+  it('serialization round trip', () => {
+    const testLayer = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+
+    const config = testLayer.getConfig();
+    const restored = TransformerDecoder.fromConfig(TransformerDecoder, config);
+
+    expect(restored.getConfig()).toEqual(config);
+  });
 
   it('does not leak memory', () => {
-    const layer = new CachedMultiHeadAttention({numHeads: 2, keyDim: 2});
-    const query = ones([1, 4, 8]);
-    // Initial call that builds sublayers and necessary tensors.
-    layer.call(query, {value: query});
+    const encoderInput = randomUniform([4, 6]);
+    const decoderInput = randomUniform([4, 6]);
+    const decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
 
     const numTensors = memory().numTensors;
-    layer.call(query, {value: query});
+    decoder.call(decoderInput, {encoderSequence: encoderInput});
 
     expect(memory().numTensors).toEqual(numTensors + 1);
   });
-  // TODO(pforderique): Test serialization.
 });
