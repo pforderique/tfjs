@@ -220,7 +220,7 @@ describe('TransformerDecoder', () => {
     const decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
 
     const numTensors = memory().numTensors;
-    decoder.call(decoderInput, {encoderSequence: encoderInput});
+    decoder.apply(decoderInput, {encoderSequence: encoderInput});
 
     expect(memory().numTensors).toEqual(numTensors + 1);
   });
