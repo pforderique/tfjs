@@ -20,7 +20,7 @@
  */
 
 /* Original source: keras_nlp/layers/modeling/transformer_decoder.py */
-import { Tensor, add, serialization } from '@tensorflow/tfjs-core';
+import { Tensor, add, serialization, tidy } from '@tensorflow/tfjs-core';
 
 import { Activation, getActivation, serializeActivation } from '../../../activations';
 import { Layer, LayerArgs, SymbolicTensor, } from '../../../engine/topology';
@@ -258,7 +258,8 @@ export class TransformerDecoder extends Layer {
       this.decoderSequenceShape = inputShape as Shape;
     }
     // Infer the dimension of our hidden feature size from the build shape.
-    const hiddenDim = this.decoderSequenceShape[-1];
+    const hiddenDim =
+      this.decoderSequenceShape[this.decoderSequenceShape.length - 1];
     // Attention head size is `hiddenDim` over the number of heads.
     const headDim = Math.floor(hiddenDim / this.numHeads);
 
@@ -313,7 +314,7 @@ export class TransformerDecoder extends Layer {
     if (!this.built) {
       const decoderSequenceShape = decoderSequence.shape;
       const encoderSequenceShape =
-        kwargs.encoderSequence ? kwargs.encoderSequence.shape : null;
+        kwargs && kwargs.encoderSequence ? kwargs.encoderSequence.shape : null;
       this.build([decoderSequenceShape, encoderSequenceShape]);
     }
     return super.apply(decoderSequence, kwargs) as Tensor|SymbolicTensor;
@@ -338,101 +339,102 @@ export class TransformerDecoder extends Layer {
   callAndReturnCaches(
     decoderSequence: Tensor, kwargs: TransformerDecoderOptions
   ): [Tensor, Tensor, Tensor] {
+    return tidy(() => {
+      const hasEncoderSequence = kwargs.encoderSequence != null;
+      const hasCrossAttention = this.selfCrossAttentionLayer != null;
 
-    const hasEncoderSequence = kwargs.encoderSequence != null;
-    const hasCrossAttention = this.selfCrossAttentionLayer != null;
-
-    if (!hasCrossAttention && hasEncoderSequence) {
-      throw new ValueError(
-        'The number of call arguments to `TransformerDecoder` should ' +
-        'not change. Use `layer.apply(decoderSequence, {encoderSequence})` ' +
-        'to build a layer with cross attention, or ' +
-        '`layer.apply (decoderSequence)` to build a layer without. ' +
-        'This layer has been built without cross attention, but ' +
-        'you are trying to call it with encoderSequence.'
-      );
-    } else if (hasCrossAttention && !hasEncoderSequence) {
-      throw new ValueError(
-        'The number of call arguments to `TransformerDecoder` should not ' +
-        'change. Use `layer.apply(decoderSequence, {encoderSequence})` ' +
-        'to build a layer with cross attention, or ' +
-        '`layer.apply(decoderSequence)` to build a layer without. ' +
-        'This layer has been built with cross attention, but ' +
-        'you did not provide encoderSequence.'
-      );
-    }
-
-    const hasSelfAttentionCache = kwargs.selfAttentionCache != null;
-    const hasCrossAttentionCache = kwargs.crossAttentionCache != null;
-    if (hasCrossAttention && (
-      hasSelfAttentionCache !== hasCrossAttentionCache
-    )) {
-      throw new ValueError(
-        'When calling `TransformerDecoder` with cross-attention (with both ' +
-        '`encoderSequence` and `decoderSequence`), `selfAttentionCache` and ' +
-        '`crossAttentionCache` should both be set or both be `null`. One ' +
-        'cannot be `null` while the other is not. Received: ' +
-        `selfAttentionCache=${kwargs.selfAttentionCache}, ` +
-        `crossAttentionCache=${kwargs.crossAttentionCache}.`
-      );
-    }
-
-    const selfAttentionMask = this.computeSelfAttentionMask(
-      decoderSequence,
-      kwargs.decoderPaddingMask,
-      kwargs.decoderAttentionMask,
-      kwargs.useCausalMask,
-      kwargs.selfAttentionCache,
-      kwargs.selfAttentionCacheUpdateIndex,
-    );
-
-    let x = decoderSequence; // Intermediate result.
-    let selfAttentionCache;
-
-    // Self attention block.
-    let residual = x;
-    if (this.normalizeFirst) {
-      x = this.selfAttentionLayernorm.apply(x) as Tensor;
-    }
-    [x, selfAttentionCache] = this.selfAttentionLayer.callAndReturnCache(
-      x,
-      {
-        value: x,
-        attentionMask: selfAttentionMask,
-        cache: selfAttentionCache,
-        cacheUpdateIndex: kwargs.selfAttentionCacheUpdateIndex,
+      if (!hasCrossAttention && hasEncoderSequence) {
+        throw new ValueError(
+          'The number of call arguments to `TransformerDecoder` should ' +
+          'not change. Use `layer.apply(decoderSequence, {encoderSequence})` ' +
+          'to build a layer with cross attention, or ' +
+          '`layer.apply (decoderSequence)` to build a layer without. ' +
+          'This layer has been built without cross attention, but ' +
+          'you are trying to call it with encoderSequence.'
+        );
+      } else if (hasCrossAttention && !hasEncoderSequence) {
+        throw new ValueError(
+          'The number of call arguments to `TransformerDecoder` should not ' +
+          'change. Use `layer.apply(decoderSequence, {encoderSequence})` ' +
+          'to build a layer with cross attention, or ' +
+          '`layer.apply(decoderSequence)` to build a layer without. ' +
+          'This layer has been built with cross attention, but ' +
+          'you did not provide encoderSequence.'
+        );
       }
-    );
-    x = this.selfAttentionDropout.apply(x) as Tensor;
-    x = add(x, residual);
-    if (!this.normalizeFirst) {
-      x = this.selfAttentionLayernorm.apply(x) as Tensor;
-    }
 
-    // Cross attention is optional.
-    // TODO(pforderique): Add cross attention logic for encoder-decoder arch.
-
-    // Feedforward block.
-    residual = x;
-    if (this.normalizeFirst) {
-      x = this.selfAttentionLayernorm.apply(x) as Tensor;
-    }
-    x = this.feedforwardIntermediateDense.apply(x) as Tensor;
-    x = this.feedforwardOutputDense.apply(x) as Tensor;
-    x = this.feedforwardDropout.apply(x) as Tensor;
-    x = add(x, residual);
-    if (!this.normalizeFirst) {
-      x = this.selfAttentionLayernorm.apply(x) as Tensor;
-    }
-
-    if (selfAttentionCache != null) {
-      if (hasCrossAttention) {
-        return [x, selfAttentionCache, kwargs.crossAttentionCache];
-      } else {
-        return [x, selfAttentionCache, null];
+      const hasSelfAttentionCache = kwargs.selfAttentionCache != null;
+      const hasCrossAttentionCache = kwargs.crossAttentionCache != null;
+      if (hasCrossAttention && (
+        hasSelfAttentionCache !== hasCrossAttentionCache
+      )) {
+        throw new ValueError(
+          'When calling `TransformerDecoder` with cross-attention (with both ' +
+          '`encoderSequence` and `decoderSequence`), `selfAttentionCache` and ' +
+          '`crossAttentionCache` should both be set or both be `null`. One ' +
+          'cannot be `null` while the other is not. Received: ' +
+          `selfAttentionCache=${kwargs.selfAttentionCache}, ` +
+          `crossAttentionCache=${kwargs.crossAttentionCache}.`
+        );
       }
-    }
-    return [x, null, null];
+
+      const selfAttentionMask = this.computeSelfAttentionMask(
+        decoderSequence,
+        kwargs.decoderPaddingMask,
+        kwargs.decoderAttentionMask,
+        kwargs.useCausalMask,
+        kwargs.selfAttentionCache,
+        kwargs.selfAttentionCacheUpdateIndex,
+      );
+
+      let x = decoderSequence; // Intermediate result.
+      let selfAttentionCache;
+
+      // Self attention block.
+      let residual = x;
+      if (this.normalizeFirst) {
+        x = this.selfAttentionLayernorm.apply(x) as Tensor;
+      }
+      [x, selfAttentionCache] = this.selfAttentionLayer.callAndReturnCache(
+        x,
+        {
+          value: x,
+          attentionMask: selfAttentionMask,
+          cache: selfAttentionCache,
+          cacheUpdateIndex: kwargs.selfAttentionCacheUpdateIndex,
+        }
+      );
+      x = this.selfAttentionDropout.apply(x) as Tensor;
+      x = add(x, residual);
+      if (!this.normalizeFirst) {
+        x = this.selfAttentionLayernorm.apply(x) as Tensor;
+      }
+
+      // Cross attention is optional.
+      // TODO(pforderique): Add cross attention logic for encoder-decoder arch.
+
+      // Feedforward block.
+      residual = x;
+      if (this.normalizeFirst) {
+        x = this.selfAttentionLayernorm.apply(x) as Tensor;
+      }
+      x = this.feedforwardIntermediateDense.apply(x) as Tensor;
+      x = this.feedforwardOutputDense.apply(x) as Tensor;
+      x = this.feedforwardDropout.apply(x) as Tensor;
+      x = add(x, residual);
+      if (!this.normalizeFirst) {
+        x = this.selfAttentionLayernorm.apply(x) as Tensor;
+      }
+
+      if (selfAttentionCache != null) {
+        if (hasCrossAttention) {
+          return [x, selfAttentionCache, kwargs.crossAttentionCache];
+        } else {
+          return [x, selfAttentionCache, null];
+        }
+      }
+      return [x, null, null];
+    });
   }
 
   private computeSelfAttentionMask(

@@ -215,12 +215,13 @@ describe('TransformerDecoder', () => {
   });
 
   it('does not leak memory', () => {
-    const encoderInput = randomUniform([4, 6]);
     const decoderInput = randomUniform([4, 6]);
     const decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+    // Initial apply to make sure layer is built.
+    decoder.apply(decoderInput);
 
     const numTensors = memory().numTensors;
-    decoder.apply(decoderInput, {encoderSequence: encoderInput});
+    decoder.apply(decoderInput);
 
     expect(memory().numTensors).toEqual(numTensors + 1);
   });
