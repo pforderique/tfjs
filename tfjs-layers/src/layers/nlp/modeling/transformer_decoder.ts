@@ -394,12 +394,12 @@ export class TransformerDecoder extends Layer {
     if (this.normalizeFirst) {
       x = this.selfAttentionLayernorm.apply(x) as Tensor;
     }
-    [x, kwargs.selfAttentionCache] = this.selfAttentionLayer.callAndReturnCache(
+    [x, selfAttentionCache] = this.selfAttentionLayer.callAndReturnCache(
       x,
       {
         value: x,
         attentionMask: selfAttentionMask,
-        cache: kwargs.selfAttentionCache,
+        cache: selfAttentionCache,
         cacheUpdateIndex: kwargs.selfAttentionCacheUpdateIndex,
       }
     );
@@ -425,7 +425,7 @@ export class TransformerDecoder extends Layer {
       x = this.selfAttentionLayernorm.apply(x) as Tensor;
     }
 
-    if (kwargs.selfAttentionCache != null) {
+    if (selfAttentionCache != null) {
       if (hasCrossAttention) {
         return [x, selfAttentionCache, kwargs.crossAttentionCache];
       } else {
@@ -475,10 +475,10 @@ export class TransformerDecoder extends Layer {
       'activation': serializeActivation(this.activation),
       'layerNormEpsilon': this.layerNormEpsilon,
       'kernelInitializer': serializeInitializer(this.kernelInitializer),
-      "biasInitializer": serializeInitializer(this.biasInitializer),
-      "normalizeFirst": this.normalizeFirst,
-      "decoderSequenceShape": this.decoderSequenceShape,
-      "encoderSequenceShape": this.encoderSequenceShape,
+      'biasInitializer': serializeInitializer(this.biasInitializer),
+      'normalizeFirst': this.normalizeFirst,
+      'decoderSequenceShape': this.decoderSequenceShape,
+      'encoderSequenceShape': this.encoderSequenceShape,
     };
     const baseConfig = super.getConfig();
     Object.assign(config, baseConfig);

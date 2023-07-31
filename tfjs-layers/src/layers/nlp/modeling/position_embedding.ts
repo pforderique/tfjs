@@ -125,9 +125,10 @@ export class PositionEmbedding extends Layer {
 
   override call(
     inputs: Tensor|Tensor[],
-    kwargs: PositionEmbeddingOptions={startIndex: 0}
+    kwargs?: PositionEmbeddingOptions
   ): Tensor {
     return tidy(() => {
+      kwargs.startIndex = kwargs.startIndex ?? 0;
       const shape = getExactlyOneTensor(inputs).shape;
       const featureLength = shape[shape.length - 1];
       const sequenceLength = shape[shape.length - 2];

@@ -76,7 +76,7 @@ describe('TransformerDecoder', () => {
     const decoderInput = zeros([4, 6]);
     // With cross-attention.
     let decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
-    decoder.apply(decoderInput, {encoderSequence: encoderInput})
+    decoder.apply(decoderInput, {encoderSequence: encoderInput});
 
     // Should raise ValueError if encoderInput is not provided.
     expect(() => decoder.apply(decoderInput)).toThrow();

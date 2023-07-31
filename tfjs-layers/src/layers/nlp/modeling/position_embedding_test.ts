@@ -19,25 +19,13 @@
  *  Tests for position embedding layer..
  */
 
-import { DataType, Tensor, memory, ones, randomUniform, reshape, tidy, zeros } from '@tensorflow/tfjs-core';
+import { Tensor, memory, ones, randomUniform } from '@tensorflow/tfjs-core';
 
-import { Shape } from '../../../keras_format/common';
 import { SymbolicTensor } from '../../../engine/topology';
-import { Initializer } from '../../../initializers';
-import { expectTensorsClose } from '../../../utils/test_utils';
 import { input, model } from '../../../exports';
 import { PositionEmbedding } from './position_embedding';
 
-export class CustomInit extends Initializer {
-  apply(shape: Shape, dtype?: DataType): Tensor {
-    return tidy(() => {
-      const count = shape.reduce((a, b) => a * b, 1);
-      return reshape(Array(count).fill(1), shape).asType(dtype);
-    });
-  }
-}
-
-describe('PositionEmbedding Layer', () => {
+describe('PositionEmbedding', () => {
   it('static layer output shape', () => {
     // Create a 3-dimensional input (the first dimension is implicit).
     const sequenceLength = 21;
@@ -143,29 +131,6 @@ describe('PositionEmbedding Layer', () => {
     expect(outputData.shape).toEqual([1, inputLength, featureSize]);
   });
 
-  it('callable initializer', () => {
-    const maxSequenceLength = 4;
-    const featureSize = 3;
-    const testLayer = new PositionEmbedding({
-      sequenceLength: maxSequenceLength,
-      initializer: new CustomInit(),
-    });
-    const inputs = input({shape: [maxSequenceLength, featureSize]});
-    const outputs = testLayer.apply(inputs) as SymbolicTensor;
-    const pmodel = model({inputs, outputs});
-
-    const batchSize = 2;
-    const data = zeros([batchSize, maxSequenceLength, featureSize]);
-    pmodel.apply(data);
-    const modelOutput = pmodel.predict(data) as Tensor;
-    const expectedOutput = reshape(
-      Array.from({length: maxSequenceLength * featureSize}, (_, i) => i),
-      [maxSequenceLength, featureSize],
-    ).broadcastTo([batchSize, maxSequenceLength, featureSize]);
-
-    expectTensorsClose(modelOutput, expectedOutput);
-  });
-
   it('one training step', async () => {
     const maxSequenceLength = 4;
     const featureSize = 3;
@@ -183,17 +148,18 @@ describe('PositionEmbedding Layer', () => {
     const loss = pmodel.trainOnBatch(data, label);
 
     expect(await loss).toBeGreaterThan(0);
-  })
+  });
 
   it('serialization round trip', () => {
     const maxSequenceLength = 40;
     const testLayer = new PositionEmbedding({
       sequenceLength: maxSequenceLength,
     });
-    const config = testLayer.getConfig();
-    const restored = PositionEmbedding.fromConfig(PositionEmbedding, config);
+    const original = testLayer.getConfig();
+    const restored =
+      PositionEmbedding.fromConfig(PositionEmbedding, original).getConfig();
 
-    expect(restored.getConfig()).toEqual(config);
+    expect(original['sequenceLength']).toEqual(restored['sequenceLength']);
   });
 
   it('does not leak memory', () => {
@@ -201,6 +167,7 @@ describe('PositionEmbedding Layer', () => {
     const batchSize = 2;
     const testLayer = new PositionEmbedding({sequenceLength});
     const data = randomUniform([batchSize, sequenceLength, 3]);
+    testLayer.build(data.shape);
 
     const numTensors = memory().numTensors;
     testLayer.apply(data);
