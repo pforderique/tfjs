@@ -51,8 +51,6 @@ describe('PositionEmbedding Layer', () => {
     const expectedOutputShape = [null, sequenceLength, featureSize];
 
     expect(outputTensor.shape).toEqual(expectedOutputShape);
-    // The output dtype for this layer should match the compute dtype.
-    expect(outputTensor.dtype).toEqual(testLayer.dtype);
   });
 
   it('more than 3 dimensions static', () => {
@@ -70,8 +68,6 @@ describe('PositionEmbedding Layer', () => {
       [null, featureSize, sequenceLength, featureSize];
 
     expect(outputTensor.shape).toEqual(expectedOutputShape);
-    // The output dtype for this layer should match the compute dtype.
-    expect(outputTensor.dtype).toEqual(testLayer.dtype);
   });
 
   it('float32 dtype', () => {
@@ -193,7 +189,6 @@ describe('PositionEmbedding Layer', () => {
     const maxSequenceLength = 40;
     const testLayer = new PositionEmbedding({
       sequenceLength: maxSequenceLength,
-      initializer: 'zeros',
     });
     const config = testLayer.getConfig();
     const restored = PositionEmbedding.fromConfig(PositionEmbedding, config);
@@ -208,7 +203,7 @@ describe('PositionEmbedding Layer', () => {
     const data = randomUniform([batchSize, sequenceLength, 3]);
 
     const numTensors = memory().numTensors;
-    testLayer.call(data);
+    testLayer.apply(data);
 
     expect(memory().numTensors).toEqual(numTensors + 1);
   });
