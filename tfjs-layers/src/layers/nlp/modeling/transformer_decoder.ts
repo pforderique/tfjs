@@ -388,7 +388,7 @@ export class TransformerDecoder extends Layer {
       );
 
       let x = decoderSequence; // Intermediate result.
-      let selfAttentionCache;
+      let selfAttentionCache = kwargs.selfAttentionCache;
 
       // Self attention block.
       let residual = x;

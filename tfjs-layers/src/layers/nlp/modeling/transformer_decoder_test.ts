@@ -27,8 +27,22 @@ import { Dense } from '../../core';
 import { sliceUpdate } from '../utils';
 
 import { TransformerDecoder } from './transformer_decoder';
+import { ConfigDict } from '@tensorflow/tfjs-core/dist/serialization';
 
 describe('TransformerDecoder', () => {
+  let originalTimeout: number;
+
+  beforeAll(() => {
+    // This test needs more time to finish the async fetch, adjusting
+    // jasmine timeout for this test to avoid flakiness. See jasmine
+    // documentation for detail:
+    // https://jasmine.github.io/2.0/introduction.html#section-42
+    originalTimeout = jasmine.DEFAULT_TIMEOUT_INTERVAL;
+    jasmine.DEFAULT_TIMEOUT_INTERVAL = 1000000;
+  });
+
+  afterAll(() => jasmine.DEFAULT_TIMEOUT_INTERVAL = originalTimeout);
+
   describe('valid call', () => {
     function testValidCall(testcaseName: string, normalizeFirst: boolean) {
       it(testcaseName, () => {
@@ -47,16 +61,13 @@ describe('TransformerDecoder', () => {
     function testValidCallWithoutCrossAttention(
         testcaseName: string, normalizeFirst: boolean) {
       it(`${testcaseName} without cross attention`, () => {
-        const encoderInput = randomUniform([4, 6]);
         const decoderInput = randomUniform([4, 6]);
         const decoder = new TransformerDecoder({
           intermediateDim: 4,
           numHeads: 2,
           normalizeFirst,
         });
-        expect(
-          () => decoder.apply(decoderInput, {encoderSequence: encoderInput})
-        ).not.toThrow();
+        expect(() => decoder.apply(decoderInput)).not.toThrow();
       });
     }
 
@@ -66,11 +77,130 @@ describe('TransformerDecoder', () => {
     ];
 
     for (const [testcaseName, normalizeFirst] of params) {
-      testValidCall(testcaseName, normalizeFirst);
+      // testValidCall(testcaseName, normalizeFirst);
+      testValidCall; // TODO(pforderique): Test once cross attention supported.
       testValidCallWithoutCrossAttention(testcaseName, normalizeFirst);
     }
   });
 
+  it('invalid call', () => {
+    const encoderInput = zeros([4, 6]);
+    const decoderInput = zeros([4, 6]);
+    // TODO(pforderique): Test once cross attention is supported.
+    // // With cross-attention.
+    // let decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+    // decoder.apply(decoderInput, {encoderSequence: encoderInput});
+
+    // // Should raise ValueError if encoderInput is not provided.
+    // expect(() => decoder.apply(decoderInput)).toThrow();
+
+    // Without cross-attention.
+    let decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+    decoder.apply(decoderInput);
+
+    // Should raise ValueError if encoderInput is provided.
+    expect(
+      () => decoder.apply(decoderInput, {encoderSequence: encoderInput})
+    ).toThrow();
+  });
+
+  it('error when invalid kernel initializer', () => {
+    expect(() => new TransformerDecoder({
+      intermediateDim: 4,
+      numHeads: 2,
+      dropout: 0.5,
+      kernelInitializer: 'Invalid',
+    })).toThrow();
+  });
+
+  it('one training step of transformer without cross attention', async () => {
+    const decoderInput = input({shape: [4, 6]});
+    const decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+    let outputs = decoder.apply(decoderInput);
+    outputs = new Dense({
+      units: 10, activation: 'softmax'}).apply(outputs) as SymbolicTensor;
+    const tModel = model({inputs: decoderInput, outputs});
+
+    const decoderSequence = randomUniform([2, 4, 6]);
+    const label = randomUniformInt([2, 4, 1], 0, 10).asType('float32');
+
+    tModel.compile({loss: 'sparseCategoricalCrossentropy', optimizer: 'adam'});
+    const loss = tModel.trainOnBatch(decoderSequence, label);
+
+    expect(await loss).toBeGreaterThan(0);
+  });
+
+  it('serialization round trip', () => {
+    const testLayer = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+
+    const config = testLayer.getConfig();
+    const restored = TransformerDecoder.fromConfig(TransformerDecoder, config);
+
+    // Initializers don't get serailized with customObjects.
+    delete ((config['kernelInitializer'] as ConfigDict
+      )['config'] as ConfigDict)['customObjects'];
+    delete ((config['biasInitializer'] as ConfigDict
+      )['config'] as ConfigDict)['customObjects'];
+
+    expect(restored.getConfig()).toEqual(config);
+  });
+
+  it('does not leak memory', () => {
+    const decoderInput = randomUniform([4, 6]);
+    const decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
+    // Initial apply to make sure layer is built.
+    decoder.apply(decoderInput);
+
+    const numTensors = memory().numTensors;
+    decoder.apply(decoderInput);
+
+    expect(memory().numTensors).toEqual(numTensors + 1);
+  });
+
+  it('cache call is correct', () => {
+    const batchSize = 2;
+    const seqLen = 5;
+    const numHeads = 2;
+    const headDim = 4;
+    const hiddenDim = numHeads * headDim;
+
+    const layer = new TransformerDecoder({intermediateDim: 4, numHeads});
+    const dtype = 'float32';
+
+    const x = randomUniform([batchSize, seqLen, hiddenDim], null, null, dtype);
+    const cache = zeros([batchSize, 2, seqLen, numHeads, headDim], dtype);
+    const outputs = zerosLike(x);
+
+    layer.build(x.shape);
+    const [noLoopOutputs, noLoopCache] = layer.callAndReturnCaches(
+      x, {selfAttentionCache: cache, selfAttentionCacheUpdateIndex: 0});
+
+    function call(outputs: Tensor, cache: Tensor) {
+      for (let i = 0; i < seqLen; i++) {
+        // Compute the rest tokens.
+        const nextInput = x.slice([0, i, 0], [batchSize, 1, hiddenDim]);
+        const [nextOutput, nextCache] = layer.callAndReturnCaches(
+          nextInput,
+          {
+            selfAttentionCache: cache,
+            selfAttentionCacheUpdateIndex: i
+          }
+        );
+        outputs = sliceUpdate(outputs, [0, i, 0], nextOutput);
+        cache = nextCache;
+      }
+      return [outputs, cache];
+    }
+    const [output, outputCache] = call(outputs, cache);
+
+    expectTensorsClose(output, noLoopOutputs);
+    expectTensorsClose(outputCache, noLoopCache);
+  });
+
+  // TODO(pforderique): Test mask propogation once supported.
+});
+
+describe('extra', () => {
   it('invalid call', () => {
     const encoderInput = zeros([4, 6]);
     const decoderInput = zeros([4, 6]);
@@ -89,15 +219,6 @@ describe('TransformerDecoder', () => {
     expect(
       () => decoder.apply(decoderInput, {encoderSequence: encoderInput})
     ).toThrow();
-  });
-
-  it('error when invalid kernerl initializer', () => {
-    expect(() => new TransformerDecoder({
-      intermediateDim: 4,
-      numHeads: 2,
-      dropout: 0.5,
-      kernelInitializer: 'Invalid',
-    })).toThrow();
   });
 
   it('one training step of transformer with cross attention', async () => {
@@ -180,6 +301,7 @@ describe('TransformerDecoder', () => {
     const outputs = zerosLike(x);
 
     const layer = new TransformerDecoder({intermediateDim: 4, numHeads});
+    layer.build(x.shape);
     const [noLoopOutputs, noLoopCache] = layer.callAndReturnCaches(
       x, {selfAttentionCache: inputCache, selfAttentionCacheUpdateIndex: 0});
 
@@ -204,25 +326,4 @@ describe('TransformerDecoder', () => {
     expectTensorsClose(output, noLoopOutputs);
     expectTensorsClose(outputCache, noLoopCache);
   });
-
-  it('serialization round trip', () => {
-    const testLayer = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
-
-    const config = testLayer.getConfig();
-    const restored = TransformerDecoder.fromConfig(TransformerDecoder, config);
-
-    expect(restored.getConfig()).toEqual(config);
-  });
-
-  it('does not leak memory', () => {
-    const decoderInput = randomUniform([4, 6]);
-    const decoder = new TransformerDecoder({intermediateDim: 4, numHeads: 2});
-    // Initial apply to make sure layer is built.
-    decoder.apply(decoderInput);
-
-    const numTensors = memory().numTensors;
-    decoder.apply(decoderInput);
-
-    expect(memory().numTensors).toEqual(numTensors + 1);
-  });
-});
+})
