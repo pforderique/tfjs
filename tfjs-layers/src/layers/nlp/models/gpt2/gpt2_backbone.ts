@@ -22,7 +22,6 @@
 /* Original source: keras_nlp/models/gpt2/gpt2_backbone.py */
 import { serialization } from '@tensorflow/tfjs-core';
 
-import { LayersModel } from '../../../../engine/training';
 import { RandomNormal } from '../../../../initializers';
 import { input } from '../../../../exports';
 import { Embedding } from '../../../embeddings';
@@ -33,6 +32,7 @@ import { Dropout } from '../../../core';
 import { TransformerDecoder } from '../../modeling/transformer_decoder';
 import { getActivation } from '../../../../activations';
 import { LayerNormalization } from '../../../normalization';
+import { Backbone } from '../backbone';
 
 function gpt2KernelInitializer(stddev = 0.02) {
   return new RandomNormal({stddev});
@@ -122,7 +122,7 @@ export interface GPT2BackboneArgs  {
  * model.apply(inputData, {paddingMask});
  * ```
  */
-export class GPT2Backbone extends LayersModel {
+export class GPT2Backbone extends Backbone {
   private vocabularySize: number;
   private numLayers: number;
   private numHeads: number;
@@ -186,6 +186,7 @@ export class GPT2Backbone extends LayersModel {
     super({
       inputs: [tokenIds, paddingMask],
       outputs: sequenceOutput,
+      name: 'gpt2_backbone'
     });
     this.vocabularySize = args.vocabularySize;
     this.numLayers = args.numLayers;
@@ -211,7 +212,7 @@ export class GPT2Backbone extends LayersModel {
     return config;
   }
 
-  get tokenEmbedding() {
+  override get tokenEmbedding() {
     return this.getLayer('token_embedding');
   }
 

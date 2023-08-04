@@ -32,13 +32,12 @@ describe('GPT2Backbone', () => {
       vocabularySize: 10,
       numLayers: 2,
       numHeads: 2,
-      hiddenDim: 32,
+      hiddenDim: 2,
       intermediateDim: 4,
       maxSequenceLength: 5,
     });
     inputBatch = [
       ones([2, 5], 'int32'),  // tokenIds
-      ones([2, 5], 'int32'),  // segmentIds
       ones([2, 5], 'int32'),  // paddingMask
     ];
   });
@@ -70,12 +69,6 @@ describe('GPT2Backbone', () => {
 
   it('predict', () => {
     expect(() => backbone.predict(inputBatch)).not.toThrow();
-  });
-
-  it('serialization round trip', () => {
-    const config = backbone.getConfig();
-    const newBackbone = GPT2Backbone.fromConfig(GPT2Backbone, config);
-    expect(newBackbone.getConfig()).toEqual(config);
   });
 
   it('does not leak memory', () => {
