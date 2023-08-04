@@ -24,14 +24,14 @@ import { serialization } from '@tensorflow/tfjs-core';
 
 import { LayersModel } from '../../../../engine/training';
 import { RandomNormal } from '../../../../initializers';
-import { input } from 'tfjs-layers/src/exports';
+import { input } from '../../../../exports';
 import { Embedding } from '../../../embeddings';
-import { SymbolicTensor } from 'tfjs-layers/src/engine/topology';
+import { SymbolicTensor } from '../../../../engine/topology';
 import { PositionEmbedding } from '../../modeling/position_embedding';
-import { add } from 'tfjs-layers/src/exports_layers';
+import { add } from '../../../../exports_layers';
 import { Dropout } from '../../../core';
 import { TransformerDecoder } from '../../modeling/transformer_decoder';
-import { getActivation } from 'tfjs-layers/src/activations';
+import { getActivation } from '../../../../activations';
 import { LayerNormalization } from '../../../normalization';
 
 function gpt2KernelInitializer(stddev = 0.02) {
