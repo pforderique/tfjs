@@ -22,24 +22,23 @@
 /* Original source: keras_nlp/models/gpt2/gpt2_backbone.py */
 import { serialization } from '@tensorflow/tfjs-core';
 
-import { ContainerArgs } from '../../../engine/container';
-import { LayersModel } from '../../../engine/training';
-import { RandomNormal } from '../../../initializers';
+import { LayersModel } from '../../../../engine/training';
+import { RandomNormal } from '../../../../initializers';
 import { input } from 'tfjs-layers/src/exports';
-import { Embedding } from '../../embeddings';
+import { Embedding } from '../../../embeddings';
 import { SymbolicTensor } from 'tfjs-layers/src/engine/topology';
-import { PositionEmbedding } from '../modeling/position_embedding';
+import { PositionEmbedding } from '../../modeling/position_embedding';
 import { add } from 'tfjs-layers/src/exports_layers';
-import { Dropout } from '../../core';
-import { TransformerDecoder } from '../modeling/transformer_decoder';
+import { Dropout } from '../../../core';
+import { TransformerDecoder } from '../../modeling/transformer_decoder';
 import { getActivation } from 'tfjs-layers/src/activations';
-import { LayerNormalization } from '../../normalization';
+import { LayerNormalization } from '../../../normalization';
 
 function gpt2KernelInitializer(stddev = 0.02) {
   return new RandomNormal({stddev});
 }
 
-export interface GPT2BackboneArgs extends ContainerArgs {
+export interface GPT2BackboneArgs  {
   /**
    * Integer. The size of the token vocabulary.
    */
@@ -133,14 +132,8 @@ export class GPT2Backbone extends LayersModel {
   private maxSequenceLength: number;
 
   constructor(args: GPT2BackboneArgs) {
-    super(args);
-    this.vocabularySize = args.vocabularySize;
-    this.numLayers = args.numLayers;
-    this.numHeads = args.numHeads;
-    this.hiddenDim = args.hiddenDim;
-    this.intermediateDim = args.intermediateDim;
-    this.dropout = args.dropout ?? 0.1;
-    this.maxSequenceLength = args.maxSequenceLength ?? 1024;
+    args.dropout = args.dropout ?? 0.1;
+    args.maxSequenceLength = args.maxSequenceLength ?? 1024;
 
     // Inputs
     const tokenIds = input({shape: [null], dtype: 'int32', name: 'token_ids'});
@@ -149,30 +142,30 @@ export class GPT2Backbone extends LayersModel {
 
     // Embed tokens, positions.
     const tokenEmbedding = new Embedding({
-      inputDim: this.vocabularySize,
-      outputDim: this.hiddenDim,
+      inputDim: args.vocabularySize,
+      outputDim: args.hiddenDim,
       embeddingsInitializer: gpt2KernelInitializer(0.01),
       name: 'token_embedding',
     }).apply(tokenIds) as SymbolicTensor;
 
     const positionEmbedding = new PositionEmbedding({
       initializer: gpt2KernelInitializer(0.02),
-      sequenceLength: this.maxSequenceLength,
+      sequenceLength: args.maxSequenceLength,
       name: 'position_embedding',
     }).apply(tokenEmbedding) as SymbolicTensor;
 
     // Sum and apply dropout to embeddings.
     let x = add({name: 'embeddings_add'})
       .apply([tokenEmbedding, positionEmbedding]) as SymbolicTensor;
-    x = new Dropout({rate: this.dropout, name: 'embeddings_dropout'})
+    x = new Dropout({rate: args.dropout, name: 'embeddings_dropout'})
       .apply(x) as SymbolicTensor;
 
     // Apply successive transformer decoder blocks.
-    for(let i = 0; i < this.numLayers; i++) {
+    for(let i = 0; i < args.numLayers; i++) {
       x = new TransformerDecoder({
-        intermediateDim: this.intermediateDim,
-        numHeads: this.numHeads,
-        dropout: this.dropout,
+        intermediateDim: args.intermediateDim,
+        numHeads: args.numHeads,
+        dropout: args.dropout,
         layerNormEpsilon: 1e-05,
         // TODO(pforderique): Implement gelu.
         activation: getActivation('relu'),
@@ -194,6 +187,13 @@ export class GPT2Backbone extends LayersModel {
       inputs: [tokenIds, paddingMask],
       outputs: sequenceOutput,
     });
+    this.vocabularySize = args.vocabularySize;
+    this.numLayers = args.numLayers;
+    this.numHeads = args.numHeads;
+    this.hiddenDim = args.hiddenDim;
+    this.intermediateDim = args.intermediateDim;
+    this.dropout = args.dropout ?? 0.1;
+    this.maxSequenceLength = args.maxSequenceLength ?? 1024;
   }
 
   override getConfig(): serialization.ConfigDict {
