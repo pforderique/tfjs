@@ -326,7 +326,7 @@ export class Softmax extends Layer {
   }
 
   override call(inputs: Tensor|Tensor[], kwargs: Kwargs): Tensor|Tensor[] {
-    // TODO(pforderique): Add tests for when `this.axis` is a number[]
+    // TODO(pforderique): Add tests for when `this.axis` is a number[].
     let x = getExactlyOneTensor(inputs);
     const mask = kwargs['mask'] as Tensor;
     if (mask != null) {
