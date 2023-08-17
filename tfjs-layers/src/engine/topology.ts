@@ -1563,6 +1563,13 @@ export abstract class Layer extends serialization.Serializable {
 
     return {refCountAfterDispose: this._refCount, numDisposedVariables};
   }
+
+  /** @nocollapse */
+  buildFromConfig<T extends serialization.Serializable>(
+    cls: serialization.SerializableConstructor<T>, config: serialization.ConfigDict) {
+    const inputShape = config['input_shape'] as Shape;
+      this.build(inputShape);
+  }
 }
 
 /**

@@ -104,6 +104,8 @@ export declare interface CachedMultiHeadAttentionOptions {
  *     updated cache.
  */
 export class CachedMultiHeadAttention extends MultiHeadAttention {
+  /** @nocollapse */
+  static override className = 'CachedMultiHeadAttention';
 
   override call(
     query: Tensor, kwargs: CachedMultiHeadAttentionOptions

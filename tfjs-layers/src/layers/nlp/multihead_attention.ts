@@ -327,7 +327,7 @@ export declare interface MultiHeadAttentionOptions {
  */
 export class MultiHeadAttention extends Layer {
   /** @nocollapse */
-  static readonly className = 'MultiHeadAttention';
+  static className = 'MultiHeadAttention';
 
   protected readonly numHeads: number;
   protected readonly keyDim: number;
@@ -354,6 +354,8 @@ export class MultiHeadAttention extends Layer {
   protected keyDense: EinsumDense;
   protected valueDense: EinsumDense;
   protected outputDense: EinsumDense;
+
+  layers: Layer[];
 
   constructor(args: MultiHeadAttentionArgs) {
     super(args);
@@ -496,9 +498,10 @@ export class MultiHeadAttention extends Layer {
       equation: einsumEquation,
       outputShape: getOutputShape(outputRank - 1, [this.numHeads, this.keyDim]),
       biasAxes: this.useBias ? biasAxes : null,
-      name: 'query',
+      name: 'query_dense',
       ...this.getCommonKwargsForSublayer(),
     });
+    this.queryDense.build(queryShape);
 
     [einsumEquation, biasAxes, outputRank] =
       buildProjectionEquation(keyRank - 1, 1, 2);
@@ -506,9 +509,10 @@ export class MultiHeadAttention extends Layer {
       equation: einsumEquation,
       outputShape: getOutputShape(outputRank - 1, [this.numHeads, this.keyDim]),
       biasAxes: this.useBias ? biasAxes : null,
-      name: 'key',
+      name: 'key_dense',
       ...this.getCommonKwargsForSublayer(),
     });
+    this.keyDense.build(keyShape);
 
     [einsumEquation, biasAxes, outputRank] =
       buildProjectionEquation(valueRank - 1, 1, 2);
@@ -517,17 +521,26 @@ export class MultiHeadAttention extends Layer {
       outputShape: getOutputShape(
         outputRank - 1, [this.numHeads, this.valueDim]),
       biasAxes: this.useBias ? biasAxes : null,
-      name: 'value',
+      name: 'value_dense',
       ...this.getCommonKwargsForSublayer(),
     });
+    this.valueDense.build(valueShape);
 
     // Builds the attention computations for multi-head dot product attention.
     this.buildAttention(outputRank);
     this.outputDense = this.makeOutputDense(
       freeDims,
       this.getCommonKwargsForSublayer(),
-      'attentionOutput'
+      'output_dense'
     );
+    this.outputDense.build([null, null, queryShape[queryShape.length - 1]]);
+
+    this.layers = [
+      this.queryDense,
+      this.keyDense,
+      this.valueDense,
+      this.outputDense,
+    ];
   }
 
   private getCommonKwargsForSublayer(): Kwargs {
@@ -580,13 +593,14 @@ export class MultiHeadAttention extends Layer {
     const [einsumEquation, biasAxes, outputRank] =
       buildProjectionEquation(freeDims, 2, outputShape.length);
 
-    return new EinsumDense({
+    const outputDense = new EinsumDense({
       equation: einsumEquation,
       outputShape: getOutputShape(outputRank - 1, outputShape),
       biasAxes: this.useBias ? biasAxes : null,
       name,
       ...commonKwargs,
     });
+    return outputDense;
   }
 
   /**

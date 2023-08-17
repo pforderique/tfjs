@@ -123,6 +123,9 @@ export interface GPT2BackboneArgs  {
  * ```
  */
 export class GPT2Backbone extends Backbone {
+  /** @nocollapse */
+  static override className = 'GPT2Backbone';
+
   private vocabularySize: number;
   numLayers: number;
   numHeads: number;
@@ -145,7 +148,7 @@ export class GPT2Backbone extends Backbone {
       inputDim: args.vocabularySize,
       outputDim: args.hiddenDim,
       embeddingsInitializer: gpt2KernelInitializer(0.01),
-      name: 'token_embedding',
+      name: 'embedding',
     }).apply(tokenIds) as SymbolicTensor;
 
     const positionEmbedding = new PositionEmbedding({
@@ -171,12 +174,12 @@ export class GPT2Backbone extends Backbone {
         activation: getActivation('relu'),
         kernelInitializer: gpt2KernelInitializer(0.02),
         normalizeFirst: true,
-        name: `transformer_layer_${i}`,
+        name: i === 0 ? `transformer_decoder` : `transformer_decoder_${i}`,
       }).apply(x, {decoderPaddingMask: paddingMask}) as SymbolicTensor;
     }
 
     const sequenceOutput = new LayerNormalization({
-      name: 'layer_norm',
+      name: 'layer_normalization',
       axis: -1,
       epsilon: 1e-05,
       dtype: 'float32',
@@ -186,7 +189,7 @@ export class GPT2Backbone extends Backbone {
     super({
       inputs: [tokenIds, paddingMask],
       outputs: sequenceOutput,
-      name: 'gpt2_backbone'
+      // name: 'gpt2_backbone'
     });
     this.vocabularySize = args.vocabularySize;
     this.numLayers = args.numLayers;
@@ -213,7 +216,7 @@ export class GPT2Backbone extends Backbone {
   }
 
   override get tokenEmbedding(): Embedding {
-    return this.getLayer('token_embedding') as Embedding;
+    return this.getLayer('embedding') as Embedding;
   }
 
   static presets(cls: serialization.SerializableConstructor<GPT2Backbone>) {

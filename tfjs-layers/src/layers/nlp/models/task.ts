@@ -99,12 +99,16 @@ export class Task extends PipelineModel {
     // vanilla `LayersModel`. We override it to get a subclass instance back.
     if ('backbone' in config && !(config['backbone'] instanceof Backbone)) {
       config["backbone"] =
-        deserializeKerasObject(config['backbone'] as serialization.ConfigDict);
+        deserializeKerasObject(
+          config['backbone'] as serialization.ConfigDict,
+          serialization.SerializationMap.getMap().classNameMap
+        );
     }
     if ('preprocessor' in config &&
         !(config['preprocessor'] instanceof Preprocessor)) {
       config['preprocessor'] = deserializeKerasObject(
-        config['preprocessor'] as serialization.ConfigDict
+        config['preprocessor'] as serialization.ConfigDict,
+        serialization.SerializationMap.getMap().classNameMap
       );
     }
     return new cls(config)

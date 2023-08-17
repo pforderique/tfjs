@@ -603,6 +603,10 @@ export abstract class Container extends Layer {
     }
     // Check if weights from keras v3.
     for (const layer of this.layers) {
+      if (isKerasSavedModelFormat && layer instanceof Container) {
+        this.diveLayers(nameToWeight, layer, totalWeightsCount, layer.name + '/');
+        continue;
+      }
       for (const [index, weight] of layer.weights.entries()) {
         // Parse the name to layerName/index.
         // e.g. dense/0, dense/1, dense_1/0, dense_1/1
@@ -623,12 +627,12 @@ export abstract class Container extends Layer {
       // layer_name/cell_name/weight_name, we need to remove
       // the inner cell name.
       let validatedName = name;
-      if (nameToWeight[name] == null) {
-        const tokens = name.split('/');
-        const shortenNameArray =
-            tokens.slice(0, -2).concat([tokens[tokens.length - 1]]);
-        validatedName = shortenNameArray.join('/');
-      }
+      // if (nameToWeight[name] == null) {
+      //   const tokens = name.split('/');
+      //   const shortenNameArray =
+      //       tokens.slice(0, -2).concat([tokens[tokens.length - 1]]);
+      //   validatedName = shortenNameArray.join('/');
+      // }
       if (nameToWeight[validatedName] != null) {
         weightValueTuples.push([nameToWeight[validatedName], weights[name]]);
       } else if (strict) {
@@ -655,8 +659,28 @@ export abstract class Container extends Layer {
     batchSetValue(weightValueTuples);
   }
 
+  protected diveLayers(
+    nameToWeight: {[name: string]: LayerVariable}, container: Container|Layer,
+    totalWeightsCount: number, prefix : string) {
+    for (const l of (container as Container).layers) {
+      if ((l as Container).layers != null) {
+        this.diveLayers(nameToWeight, l, totalWeightsCount, prefix + l.name + "/");
+      } else {
+        for (const [index, weight] of l.weights.entries()) {
+          const parsedName =
+              `${prefix}${l.name}/${index}`;
+          if (nameToWeight[parsedName] != null) {
+            throw new ValueError(`Duplicate weight name: ${parsedName}`);
+          }
+          nameToWeight[parsedName] = weight;
+          totalWeightsCount++;
+        }
+      }
+    }
+  }
+
   protected parseWeights(weights: NamedTensorMap) {
-    for (const key in Object.keys(weights)) {
+    for (const key of Object.keys(weights)) {
       const listParts = key.split('/');
       const list = ['vars', 'layer_checkpoint_dependencies'];
       // For keras v3, the weights name are saved based on the folder structure.

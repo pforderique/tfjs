@@ -278,6 +278,10 @@ export function deserializeKerasObject(
           fromConfig(cls, config['config'], customObjects, fastWeightInit);
       _GLOBAL_CUSTOM_OBJECTS = {...backupCustomObjects};
 
+      const buildConfig = config['build_config'] as serialization.ConfigDict;
+      if (buildConfig) {
+        returnObj.buildFromConfig(buildConfig);
+      }
       return returnObj;
     } else {
       // Then `cls` may be a function returning a class.

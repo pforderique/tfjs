@@ -64,6 +64,9 @@ export declare interface GPT2TokenizerArgs extends LayerArgs {
  * tokenizer.detokenize([tensor([1, 2, 0])]).print();
  */
 export class GPT2Tokenizer extends BytePairTokenizer {
+  /** @nocollapse */
+  static override className = 'GPT2Tokenizer';
+
   private readonly _endTokenId: number;
   private readonly _startTokenId: number;
   private readonly _padTokenId: number;

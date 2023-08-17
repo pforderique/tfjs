@@ -33,6 +33,7 @@ import { LayerNormalization } from '../../normalization';
 
 import { CachedMultiHeadAttention } from './cached_multihead_attention';
 import { computeCausalMask, mergePaddingAndAttentionMask } from './transformer_layer_utils';
+// import { Container, ContainerArgs } from '../../../engine/container';
 
 export declare interface TransformerDecoderArgs extends LayerArgs {
   /**
@@ -231,6 +232,9 @@ export class TransformerDecoder extends Layer {
   protected feedforwardLayernorm: LayerNormalization;
   protected feedforwardDropout: Dropout;
 
+  protected _input_shape: Shape;
+  layers: Layer[];
+
   constructor(args: TransformerDecoderArgs) {
     super(args);
     this.intermediateDim = args.intermediateDim;
@@ -270,13 +274,15 @@ export class TransformerDecoder extends Layer {
       dropout: this.dropout,
       kernelInitializer: getInitializer(this.kernelInitializer.getClassName()),
       biasInitializer: getInitializer(this.biasInitializer.getClassName()),
+      name: 'self_attention_layer'
     });
 
     this.selfAttentionLayer.buildFromSignature(
       this.decoderSequenceShape, this.decoderSequenceShape);
 
-    this.selfAttentionLayernorm =
-      new LayerNormalization({epsilon: this.layerNormEpsilon});
+    this.selfAttentionLayernorm = new LayerNormalization({
+      epsilon: this.layerNormEpsilon,
+      name: 'self_attention_layernorm'});
 
     this.selfAttentionLayernorm.build(this.decoderSequenceShape);
     this.selfAttentionDropout = new Dropout({rate: this.dropout});
@@ -290,21 +296,34 @@ export class TransformerDecoder extends Layer {
       activation: this.activation.getClassName() as ActivationIdentifier,
       kernelInitializer: getInitializer(this.kernelInitializer.getClassName()),
       biasInitializer: getInitializer(this.biasInitializer.getClassName()),
+      name: 'feedforward_intermediate_dense'
     });
     this.feedforwardIntermediateDense.build(this.decoderSequenceShape);
     this.feedforwardOutputDense = new Dense({
       units: hiddenDim,
       kernelInitializer: getInitializer(this.kernelInitializer.getClassName()),
       biasInitializer: getInitializer(this.biasInitializer.getClassName()),
+      name: 'feedforward_output_dense'
     });
     const intermediateShape = this.decoderSequenceShape.slice();
     intermediateShape[intermediateShape.length - 1] = this.intermediateDim;
     this.feedforwardOutputDense.build(intermediateShape);
-    this.feedforwardLayernorm =
-      new LayerNormalization({epsilon: this.layerNormEpsilon});
+    this.feedforwardLayernorm = new LayerNormalization({
+      epsilon: this.layerNormEpsilon,
+      name: 'feedforward_layernorm'
+    });
     this.feedforwardLayernorm.build(this.decoderSequenceShape);
     this.feedforwardDropout = new Dropout({rate: this.dropout});
     // Create layers based on input shape.
+    this.layers = [
+      this.selfAttentionLayer,
+      this.selfAttentionLayernorm,
+      this.selfAttentionDropout,
+      this.feedforwardIntermediateDense,
+      this.feedforwardOutputDense,
+      this.feedforwardLayernorm,
+      this.feedforwardDropout,
+    ];
     this.built = true;
   }
 

@@ -37,3 +37,9 @@ export {ModelAndWeightsConfig, Sequential, SequentialArgs} from './models';
 export {LayerVariable} from './variables';
 export {version as version_layers} from './version';
 export {constraints, initializers, layers, metrics, models, regularizers};
+
+export { GPT2Tokenizer, GPT2TokenizerArgs } from './layers/nlp/models/gpt2/gpt2_tokenizer';
+export { GPT2CausalLMPreprocessor } from './layers/nlp/models/gpt2/gpt2_causal_lm_preprocessor';
+export { GPT2PreprocessorArgs } from './layers/nlp/models/gpt2/gpt2_preprocessor';
+export { GPT2Backbone, GPT2BackboneArgs } from './layers/nlp/models/gpt2/gpt2_backbone';
+export { GPT2CausalLM, GPT2CausalLMArgs } from './layers/nlp/models/gpt2/gpt2_causal_lm';

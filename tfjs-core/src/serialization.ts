@@ -154,6 +154,10 @@ export class SerializationMap {
   static register<T extends Serializable>(cls: SerializableConstructor<T>) {
     SerializationMap.getMap().classNameMap[cls.className] =
         [cls, cls.fromConfig];
+    if (cls.className === 'GPT2CausalLM') {
+      console.log(
+        'should be registered now', SerializationMap.getMap().classNameMap);
+    }
   }
 }
 
@@ -233,6 +237,10 @@ export class SerializationMap {
  */
 export function registerClass<T extends Serializable>(
     cls: SerializableConstructor<T>, pkg?: string, name?: string) {
+  if (cls.className === 'GPT2CausalLM') {
+    console.log(
+      'should be registered now too');
+  }
   assert(
       cls.className != null,
       () => `Class being registered does not have the static className ` +

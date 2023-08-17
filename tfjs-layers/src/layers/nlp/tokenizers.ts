@@ -20,7 +20,7 @@
  */
 
 /* Original source: keras-nlp/tokenizer.py */
-import { Tensor, serialization, tensor, tidy} from '@tensorflow/tfjs-core';
+import { Tensor, pad, serialization, tensor, tidy} from '@tensorflow/tfjs-core';
 
 import { Layer, LayerArgs } from '../../engine/topology';
 import { NotImplementedError, ValueError } from '../../errors';
@@ -232,7 +232,7 @@ export declare interface BytePairTokenizerArgs extends LayerArgs {
  */
 export class BytePairTokenizer extends Tokenizer {
   /** @nocollapse */
-  static readonly className = 'BytePairTokenizer';
+  static className = 'BytePairTokenizer';
 
   private _vocabulary: Map<string, number>;
   private merges: string[];
@@ -253,7 +253,11 @@ export class BytePairTokenizer extends Tokenizer {
   constructor(args: BytePairTokenizerArgs) {
     super(args);
 
-    this._vocabulary = new Map(args.vocabulary);
+    if (args.vocabulary instanceof Map) {
+      this._vocabulary = new Map(args.vocabulary);
+    } else {
+      this._vocabulary = new Map(Object.entries(args.vocabulary));
+    }
     this.merges = [...args.merges];
 
     this.sequenceLength = args.sequenceLength || null;
@@ -553,7 +557,7 @@ export class BytePairTokenizer extends Tokenizer {
           } else if (t.size > this.sequenceLength) {
             return t.slice(0, this.sequenceLength);
           } else {
-            return t.pad([[0, this.sequenceLength - t.size]]);
+            return pad(t, [[0, this.sequenceLength - t.size]]);
           }
         });
       }

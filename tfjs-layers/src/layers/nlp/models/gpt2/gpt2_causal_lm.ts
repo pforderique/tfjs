@@ -41,6 +41,9 @@ declare interface ReverseEmbeddingArgs extends LayerArgs {
 }
 
 class ReverseEmbedding extends Layer {
+  /** @nocollapse */
+  static readonly className = 'ReverseEmbedding';
+
   protected embedding: Embedding;
 
   constructor(args: ReverseEmbeddingArgs) {
@@ -58,6 +61,7 @@ class ReverseEmbedding extends Layer {
   }
 
 }
+serialization.registerClass(ReverseEmbedding);
 
 export declare interface GPT2CausalLMArgs {
   /**
@@ -161,6 +165,8 @@ export declare interface GPT2CausalLMArgs {
  * ```
  */
 export class GPT2CausalLM extends GenerativeTask {
+  /** @nocollapse */
+  static override className = 'GPT2CausalLM';
 
   constructor(args: GPT2CausalLMArgs) {
     const inputs = args.backbone.input;
@@ -169,7 +175,7 @@ export class GPT2CausalLM extends GenerativeTask {
     // to vocabulary logits.
     const outputs = new ReverseEmbedding({
       embedding: args.backbone.tokenEmbedding,
-      name: 'reverse_embedding',
+      name: 'token_embedding',
     }).apply(x) as SymbolicTensor;
 
     // Instantiate using Functional API Model constructor.
@@ -180,6 +186,7 @@ export class GPT2CausalLM extends GenerativeTask {
       ...args,
     });
     this.backbone = args.backbone;
+    this.backbone.name = 'backbone';
     this.preprocessor = args.preprocessor;
 
     // Default complation.
@@ -219,7 +226,7 @@ export class GPT2CausalLM extends GenerativeTask {
     cache: Tensor,
     cacheUpdateIndex: number
   ): [Tensor, Tensor, Tensor] {
-    const tokenEmbedding = this.backbone.getLayer('token_embedding')
+    const tokenEmbedding = this.backbone.getLayer('embedding')
       .apply(tokenIds) as Tensor;
     const positionEmbedding = this.backbone.getLayer('position_embedding')
       .apply(tokenEmbedding, {startIndex: cacheUpdateIndex}) as Tensor;
@@ -235,7 +242,8 @@ export class GPT2CausalLM extends GenerativeTask {
     for (let i = 0; i < (this.backbone as GPT2Backbone).numLayers; i++) {
       currentCache = cache.gather([0], 1).squeeze();
       [x, nextCache] = (
-        this.backbone.getLayer(`transformer_layer_${i}`) as TransformerDecoder
+        this.backbone.getLayer(
+          i === 0 ? `transformer_decoder` : `transformer_decoder_${i}`) as TransformerDecoder
       ).callAndReturnCaches(
         x,
         {
@@ -246,9 +254,9 @@ export class GPT2CausalLM extends GenerativeTask {
       caches.push(nextCache);
     }
     cache = stack(caches, 1);
-    x = this.backbone.getLayer('layer_norm').apply(x) as Tensor;
+    x = this.backbone.getLayer('layer_normalization').apply(x) as Tensor;
     const hiddenStates = x;
-    const logits = this.getLayer('reverse_embedding').apply(x) as Tensor;
+    const logits = this.getLayer('token_embedding').apply(x) as Tensor;
     return [logits, hiddenStates, cache];
   }
 
@@ -412,3 +420,4 @@ export class GPT2CausalLM extends GenerativeTask {
     return prompt;
   }
 }
+serialization.registerClass(GPT2CausalLM);

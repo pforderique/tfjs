@@ -20,7 +20,7 @@
  */
 
 /* Original source: keras-nlp/start_end_packer.py */
-import { Tensor, Tensor1D, Tensor2D, concat, serialization, stack, tensor, tidy } from '@tensorflow/tfjs-core';
+import { Tensor, Tensor1D, Tensor2D, concat, pad, serialization, stack, tensor, tidy } from '@tensorflow/tfjs-core';
 
 import { Layer, LayerArgs } from '../../../engine/topology';
 import { ValueError } from '../../../errors';
@@ -151,7 +151,7 @@ export class StartEndPacker extends Layer {
           padValue = input.dtype === 'string' ? '' : 0;
         }
         if (typeof padValue === 'number') {
-          return input.pad([[0, length - input.size]], padValue);
+          return pad(input, [[0, length - input.size]], padValue);
         }
 
         const strInput = input.arraySync() as unknown as string[];

@@ -347,8 +347,8 @@ export class EinsumDense extends Layer {
   private readonly kernelConstraint: Constraint;
   private readonly biasConstraint: Constraint;
   private fullOutputShape: Shape;
-  private _kernel: LayerVariable;
-  private _bias: LayerVariable;
+  kernel: LayerVariable;
+  bias: LayerVariable;
 
   constructor(args: EinsumDenseArgs) {
     super(args);
@@ -366,14 +366,6 @@ export class EinsumDense extends Layer {
     this.biasConstraint = getConstraint(args.biasConstraint);
   }
 
-  get kernel(): LayerVariable {
-    return this._kernel;
-  }
-
-  get bias(): LayerVariable {
-    return this._bias;
-  }
-
   override build(inputShape: Shape): void {
     const [kernelShape, biasShape, fullOutputShape] = analyzeEinsumString(
       this.equation,
@@ -382,9 +374,9 @@ export class EinsumDense extends Layer {
       this.partialOutputShape
     );
     this.fullOutputShape = fullOutputShape;
-    this._kernel = this.addWeight(
+    this.kernel = this.addWeight(
       'kernel',
-      kernelShape,
+      this.name === 'output_dense' ?  [12,64,768] : kernelShape,
       this.dtype,
       this.kernelInitializer,
       this.kernelRegularizer,
@@ -393,7 +385,7 @@ export class EinsumDense extends Layer {
     );
 
     if (biasShape != null) {
-      this._bias = this.addWeight(
+      this.bias = this.addWeight(
         'bias',
         biasShape,
         this.dtype,
@@ -403,7 +395,7 @@ export class EinsumDense extends Layer {
         this.biasConstraint,
       );
     } else {
-      this._bias = null;
+      this.bias = null;
     }
     super.build(inputShape);
   }
