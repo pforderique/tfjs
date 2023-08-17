@@ -376,7 +376,7 @@ export class EinsumDense extends Layer {
     this.fullOutputShape = fullOutputShape;
     this.kernel = this.addWeight(
       'kernel',
-      this.name === 'output_dense' ?  [12,64,768] : kernelShape,
+      kernelShape, // this.name === 'output_dense' ?  [12,64,768] : kernelShape,
       this.dtype,
       this.kernelInitializer,
       this.kernelRegularizer,

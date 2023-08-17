@@ -533,7 +533,12 @@ export class MultiHeadAttention extends Layer {
       this.getCommonKwargsForSublayer(),
       'output_dense'
     );
-    this.outputDense.build([null, null, queryShape[queryShape.length - 1]]);
+    this.outputDense.build([
+      null,
+      null,
+      this.numHeads,
+      queryShape[queryShape.length - 1] / this.numHeads
+    ]);
 
     this.layers = [
       this.queryDense,
