@@ -262,4 +262,26 @@ describeWithFlags('einsum', ALL_ENVS, () => {
     const y = tensor2d([[0, 1], [2, 3], [4, 5]]);
     expect(() => tf.einsum('ij,jk->ik->i', x, y)).toThrowError(/exactly one/);
   });
+
+  it('reduce einsum to batch matmul', async () => {
+    const x = tf.randomNormal([2, 1024, 768]);
+    const y = tf.randomNormal([768, 12, 64]);
+    const actualRes = await tf.einsum('abc,cde->abde', x, y).data();
+
+    const reshapedX = tf.reshape(x, [1, 2 * 1024, 768]);
+    const reshapedY = tf.reshape(y, [1, 768, 12 * 64]);
+    const expectedRes = await tf.matMul(reshapedX, reshapedY).data();
+    expectArraysClose(actualRes.slice(0, 10), expectedRes.slice(0, 10));
+  });
+
+  it('reduce einsum to batch matmul with two dims to reduce', async () => {
+    const x = tf.randomNormal([2, 1024, 12, 64]);
+    const y = tf.randomNormal([12, 64, 768]);
+    const actualRes = await tf.einsum('abcd,cde->abe', x, y).data();
+
+    const reshapedX = tf.reshape(x, [1, 2 * 1024, 12 * 64]);
+    const reshapedY = tf.reshape(y, [1, 12 * 64, 768]);
+    const expectedRes = await tf.matMul(reshapedX, reshapedY).data();
+    expectArraysClose(actualRes.slice(0, 10), expectedRes.slice(0, 10));
+  });
 });
