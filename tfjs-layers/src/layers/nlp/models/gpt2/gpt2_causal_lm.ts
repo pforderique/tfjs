@@ -20,21 +20,21 @@
  */
 
 /* Original source: keras-nlp/models/gpt2/gpt2_causal_lm.py */
-import { AdamOptimizer, Tensor, logicalAnd, onesLike, serialization, softmax, stack, tensor, topk, where, zeros, zerosLike } from '@tensorflow/tfjs-core';
+import {AdamOptimizer, dispose, logicalAnd, onesLike, serialization, softmax, stack, Tensor, tensor, tidy, topk, where, zeros, zerosLike} from '@tensorflow/tfjs-core';
 
-import { NotImplementedError } from '../../../../errors';
-import { Layer } from '../../../../exports_layers';
-import { LayerArgs, SymbolicTensor } from '../../../../engine/topology';
-import { Embedding } from '../../../../layers/embeddings';
-import { Shape } from '../../../../keras_format/common';
+import {LayerArgs, SymbolicTensor} from '../../../../engine/topology';
+import {NotImplementedError} from '../../../../errors';
+import {Layer} from '../../../../exports_layers';
+import {Shape} from '../../../../keras_format/common';
+import {Embedding} from '../../../../layers/embeddings';
+import {sparseCategoricalCrossentropy} from '../../../../losses';
+import {Kwargs} from '../../../../types';
+import {TransformerDecoder} from '../../modeling/transformer_decoder';
+import {sliceUpdate} from '../../utils';
+import {GenerativeTask, GPT2TensorMap} from '../generative_task';
 
-import { GPT2TensorMap, GenerativeTask } from '../generative_task';
-import { sliceUpdate } from '../../utils';
-import { GPT2Backbone } from './gpt2_backbone';
-import { sparseCategoricalCrossentropy } from '../../../../losses';
-import { Kwargs } from '../../../../types';
-import { TransformerDecoder } from '../../modeling/transformer_decoder';
-import { GPT2CausalLMPreprocessor } from './gpt2_causal_lm_preprocessor';
+import {GPT2Backbone} from './gpt2_backbone';
+import {GPT2CausalLMPreprocessor} from './gpt2_causal_lm_preprocessor';
 
 declare interface ReverseEmbeddingArgs extends LayerArgs {
   embedding: Embedding;
@@ -59,7 +59,6 @@ class ReverseEmbedding extends Layer {
   override computeOutputShape(inputShape: Shape): Shape|Shape[] {
     return [inputShape[0], this.embedding.embeddings.shape[0]];
   }
-
 }
 serialization.registerClass(ReverseEmbedding);
 
@@ -174,9 +173,9 @@ export class GPT2CausalLM extends GenerativeTask {
     // Use token embedding weights to project from the token representation
     // to vocabulary logits.
     const outputs = new ReverseEmbedding({
-      embedding: args.backbone.tokenEmbedding,
-      name: 'token_embedding',
-    }).apply(x) as SymbolicTensor;
+                      embedding: args.backbone.tokenEmbedding,
+                      name: 'token_embedding',
+                    }).apply(x) as SymbolicTensor;
 
     // Instantiate using Functional API Model constructor.
     super({
@@ -192,15 +191,14 @@ export class GPT2CausalLM extends GenerativeTask {
     // Default complation.
     this.compile({
       loss: (yTrue: Tensor, yPred: Tensor) =>
-        sparseCategoricalCrossentropy(yTrue, yPred, true),
+          sparseCategoricalCrossentropy(yTrue, yPred, true),
       optimizer: new AdamOptimizer(2e-5, 0.9, 0.999),
       metrics: ['sparseCategoricalCrossentropy'],
     });
   }
 
   static override presets<T extends serialization.Serializable>(
-    cls: serialization.SerializableConstructor<T>
-  ): {} {
+      cls: serialization.SerializableConstructor<T>): {} {
     throw new NotImplementedError();
   }
 
@@ -221,19 +219,18 @@ export class GPT2CausalLM extends GenerativeTask {
    *  the final hidden representation of the input tokens, and `cache` is
    *  the decoding cache.
    */
-  callWithCache(
-    tokenIds: Tensor,
-    cache: Tensor,
-    cacheUpdateIndex: number
-  ): [Tensor, Tensor, Tensor] {
-    const tokenEmbedding = this.backbone.getLayer('embedding')
-      .apply(tokenIds) as Tensor;
-    const positionEmbedding = this.backbone.getLayer('position_embedding')
-      .apply(tokenEmbedding, {startIndex: cacheUpdateIndex}) as Tensor;
-    let x = this.backbone.getLayer('embeddings_add')
-      .apply([tokenEmbedding, positionEmbedding]) as Tensor;
-    x = this.backbone.getLayer('embeddings_dropout')
-      .apply(x) as Tensor;
+  callWithCache(tokenIds: Tensor, cache: Tensor, cacheUpdateIndex: number):
+      [Tensor, Tensor, Tensor] {
+    const tokenEmbedding =
+        this.backbone.getLayer('embedding').apply(tokenIds) as Tensor;
+    const positionEmbedding =
+        this.backbone.getLayer('position_embedding').apply(tokenEmbedding, {
+          startIndex: cacheUpdateIndex
+        }) as Tensor;
+    let x = this.backbone.getLayer('embeddings_add').apply([
+      tokenEmbedding, positionEmbedding
+    ]) as Tensor;
+    x = this.backbone.getLayer('embeddings_dropout').apply(x) as Tensor;
 
     // Each decoder layer has a cache; we update them separately.
     const caches = [];
@@ -241,16 +238,14 @@ export class GPT2CausalLM extends GenerativeTask {
     let nextCache: Tensor;
     for (let i = 0; i < (this.backbone as GPT2Backbone).numLayers; i++) {
       currentCache = cache.gather([0], 1).squeeze();
-      [x, nextCache] = (
-        this.backbone.getLayer(
-          i === 0 ? `transformer_decoder` : `transformer_decoder_${i}`) as TransformerDecoder
-      ).callAndReturnCaches(
-        x,
-        {
-          selfAttentionCache: currentCache,
-          selfAttentionCacheUpdateIndex: cacheUpdateIndex
-        }
-      );
+      [x, nextCache] =
+          (this.backbone.getLayer(
+               i === 0 ? `transformer_decoder` : `transformer_decoder_${i}`) as
+           TransformerDecoder)
+              .callAndReturnCaches(x, {
+                selfAttentionCache: currentCache,
+                selfAttentionCacheUpdateIndex: cacheUpdateIndex
+              });
       caches.push(nextCache);
     }
     cache = stack(caches, 1);
@@ -289,10 +284,8 @@ export class GPT2CausalLM extends GenerativeTask {
    * @param endTokenId The id of the end token to stop on. If all
    *  sequences have produced a new `endTokenId`, generation will stop.
    */
-  override generateStep(
-    inputs: GPT2TensorMap,
-    endTokenId?: number
-  ): GPT2TensorMap {
+  override generateStep(inputs: GPT2TensorMap, endTokenId?: number):
+      GPT2TensorMap {
     let tokenIds = inputs.tokenIds;
     let paddingMask = inputs.paddingMask;
     // Create and seed cache with a single forward pass.
@@ -303,11 +296,8 @@ export class GPT2CausalLM extends GenerativeTask {
     const index = rowLengths.min().arraySync() as number;
 
     const self = this;
-    function next(
-      prompt: Tensor,
-      cache: Tensor,
-      index: number
-    ): [Tensor, Tensor, Tensor] {
+    function next(prompt: Tensor, cache: Tensor, index: number):
+        [Tensor, Tensor, Tensor] {
       // The cache index is the index of our previous token.
       const cacheUpdateIndex = index - 1;
       const batchSize = prompt.shape[0];
@@ -315,23 +305,19 @@ export class GPT2CausalLM extends GenerativeTask {
       let logits: Tensor;
       let hiddenStates: Tensor;
       [logits, hiddenStates, cache] =
-        self.callWithCache(prompt, cache, cacheUpdateIndex);
-      return [
-        logits.squeeze([1]),
-        hiddenStates.squeeze([1]),
-        cache
-      ];
+          self.callWithCache(prompt, cache, cacheUpdateIndex);
+      return [logits.squeeze([1]), hiddenStates.squeeze([1]), cache];
     }
-    tokenIds =
-      this.sampler(next, tokenIds, cache, index, paddingMask, endTokenId, hiddenStates);
+    tokenIds = this.sampler(
+        next, tokenIds, cache, index, paddingMask, endTokenId, hiddenStates);
 
     // Compute an output padding mask with the token ids we updated.
     if (endTokenId != null) {
       // Build a mask of `endTokenId` locations not in the original
       // prompt (not in locations where `paddingMask` is True).
       let endLocations = logicalAnd(
-        tokenIds.equal(endTokenId),
-        paddingMask.logicalNot(),
+          tokenIds.equal(endTokenId),
+          paddingMask.logicalNot(),
       );
       endLocations = endLocations.cast('int32');
       // Use cumsum to get ones in all locations after endLocations.
@@ -346,15 +332,11 @@ export class GPT2CausalLM extends GenerativeTask {
   }
 
   private sampler(
-    next: (prompt: Tensor, cache: Tensor, index: number)
-      => [Tensor, Tensor, Tensor],
-    prompt: Tensor,
-    cache?: Tensor,
-    index?: number,
-    mask?: Tensor,
-    endTokenId?: number,
-    hiddenStates?: Tensor
-  ): Tensor {
+      next:
+          (prompt: Tensor, cache: Tensor,
+           index: number) => [Tensor, Tensor, Tensor],
+      prompt: Tensor, cache?: Tensor, index?: number, mask?: Tensor,
+      endTokenId?: number, hiddenStates?: Tensor): Tensor {
     const temperature = 1.0;
     const maxLength = prompt.shape[prompt.shape.length - 1];
     index = index ?? 0;
@@ -382,7 +364,7 @@ export class GPT2CausalLM extends GenerativeTask {
 
         for (const probDistribution of probabilitiesArr) {
           let sample =
-            Math.random() * probDistribution.reduce((a, b) => a + b, 0);
+              Math.random() * probDistribution.reduce((a, b) => a + b, 0);
           const sampleIdx = probDistribution.findIndex(val => {
             return (sample -= val) <= 0;
           });
@@ -398,24 +380,31 @@ export class GPT2CausalLM extends GenerativeTask {
     let iter = 0;
     let logits: Tensor;
     while (iter <= maxLength - index && cond(prompt)) {
-      // Compute the softmax distribution for the next token.
-      [logits, hiddenStates, cache] = next(prompt, cache, index);
-      let probabilities = softmax(logits.div(temperature));
-      // Compute next token.
-      let nextToken = generateNextToken(probabilities);
-      // Don't overwrite anywhere mask is True.
-      nextToken = nextToken.cast(prompt.dtype);
-      nextToken = where(
-        mask.gather([index], 1).squeeze(),
-        prompt.gather([index], 1).squeeze(),
-        nextToken,
-      );
-      // Update the prompt with the next token.
-      nextToken = nextToken.expandDims(-1);
-      prompt = sliceUpdate(prompt, [0, index], nextToken);
+      tidy(() => {
+        // Compute the softmax distribution for the next token.
+        const oldCache = cache;
+        [logits, hiddenStates, cache] = next(prompt, cache, index);
+        dispose(oldCache);
+        let probabilities = softmax(logits.div(temperature));
+        // Compute next token.
+        let nextToken = generateNextToken(probabilities);
+        // Don't overwrite anywhere mask is True.
+        nextToken = nextToken.cast(prompt.dtype);
+        nextToken = where(
+            mask.gather([index], 1).squeeze(),
+            prompt.gather([index], 1).squeeze(),
+            nextToken,
+        );
+        // Update the prompt with the next token.
+        nextToken = nextToken.expandDims(-1);
+        const oldPrompt = prompt;
+        prompt = sliceUpdate(prompt, [0, index], nextToken);
+        dispose(oldPrompt);
 
-      index += 1;
-      iter += 1;
+        index += 1;
+        iter += 1;
+        return {prompt, cache};
+      });
     }
     return prompt;
   }

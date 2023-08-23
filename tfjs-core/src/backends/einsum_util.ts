@@ -80,6 +80,9 @@ export function decodeEinsumEquation(equation: string, numTensors: number): {
     }
     if (allDims.indexOf(dimName) === -1) {
       allDims.push(dimName);
+    } else {
+      throw new Error(
+          `Output subscripts contain the duplicated label ${dimName}.`);
     }
   }
   for (let i = 0; i < inputString.length; ++i) {
@@ -217,4 +220,24 @@ function findTermsWithDim(idDims: number[][], dim: number): number[] {
     }
   }
   return termIndices;
+}
+
+export function getTransposeOrder(
+    source: number[], target: number[], summedDims: number[]) {
+  const transposeOrder = [];
+  for (let index = 0; index < target.length; index++) {
+    const dim = target[index];
+    transposeOrder.push(source.indexOf(dim));
+  }
+  for (let index = 0; index < summedDims.length; index++) {
+    const dim = summedDims[index];
+    transposeOrder.push(source.indexOf(dim));
+  }
+  for (let index = 0; index < source.length; index++) {
+    const dim = source[index];
+    if (target.indexOf(dim) === -1 && summedDims.indexOf(dim) === -1) {
+      transposeOrder.push(source.indexOf(dim));
+    }
+  }
+  return {transposeOrder, isSumDimLast: false};
 }
