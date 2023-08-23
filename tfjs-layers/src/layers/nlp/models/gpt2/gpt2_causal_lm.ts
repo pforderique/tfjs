@@ -367,7 +367,7 @@ export class GPT2CausalLM extends GenerativeTask {
       }
       // Stop if all sequences have produced a *new* endTokenId.
       const endTokens = prompt.equal(endTokenId).logicalAnd(mask.logicalNot());
-      const promptDone = endTokens.any(-1);
+      const promptDone = endTokens.any(-1).cast('bool');
       return promptDone.all().logicalNot().arraySync() as number === 1;
     }
 
