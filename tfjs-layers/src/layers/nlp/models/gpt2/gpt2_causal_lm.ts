@@ -242,7 +242,7 @@ export class GPT2CausalLM extends GenerativeTask {
     let currentCache: Tensor;
     let nextCache: Tensor;
     for (let i = 0; i < (this.backbone as GPT2Backbone).numLayers; i++) {
-      currentCache = cache.gather([0], 1).squeeze();
+      currentCache = cache.gather([i], 1).squeeze();
       [x, nextCache] = (
         this.backbone.getLayer(
           i === 0 ? `transformer_decoder` : `transformer_decoder_${i}`) as TransformerDecoder
