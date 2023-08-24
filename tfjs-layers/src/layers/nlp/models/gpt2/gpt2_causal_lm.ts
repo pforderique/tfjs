@@ -167,6 +167,7 @@ export declare interface GPT2CausalLMArgs {
 export class GPT2CausalLM extends GenerativeTask {
   /** @nocollapse */
   static override className = 'GPT2CausalLM';
+  sampler: Sampler;
 
   constructor(args: GPT2CausalLMArgs) {
     const inputs = args.backbone.input;
