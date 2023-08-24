@@ -238,11 +238,11 @@ export class GPT2CausalLM extends GenerativeTask {
       .apply(x) as Tensor;
 
     // Each decoder layer has a cache; we update them separately.
-    const caches = [];
+    const caches = cache.unstack(1);
     let currentCache: Tensor;
     let nextCache: Tensor;
     for (let i = 0; i < (this.backbone as GPT2Backbone).numLayers; i++) {
-      currentCache = cache.gather([i], 1).squeeze();
+      currentCache = caches[i];
       [x, nextCache] = (
         this.backbone.getLayer(
           i === 0 ? `transformer_decoder` : `transformer_decoder_${i}`) as TransformerDecoder
@@ -253,7 +253,7 @@ export class GPT2CausalLM extends GenerativeTask {
           selfAttentionCacheUpdateIndex: cacheUpdateIndex
         }
       );
-      caches.push(nextCache);
+      caches[i]  = nextCache;
     }
     cache = stack(caches, 1);
     x = this.backbone.getLayer('layer_normalization').apply(x) as Tensor;
